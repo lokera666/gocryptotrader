@@ -29,7 +29,7 @@ func StructValsToURLVals(v interface{}) (url.Values, error) {
 	structVal := reflect.ValueOf(v).Elem()
 	structType := structVal.Type()
 
-	for i := 0; i < structVal.NumField(); i++ {
+	for i := range structVal.NumField() {
 		structField := structVal.Field(i)
 
 		var outgoingTag string
@@ -109,7 +109,7 @@ func (p *APIKeyParams) ToURLVals(path string) (string, error) {
 	return common.EncodeURLValues(path, values), nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p *APIKeyParams) IsNil() bool {
 	return (APIKeyParams{}) == *p
 }
@@ -144,7 +144,7 @@ func (p *ChatGetParams) ToURLVals(path string) (string, error) {
 	return common.EncodeURLValues(path, values), nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p *ChatGetParams) IsNil() bool {
 	return *p == (ChatGetParams{})
 }
@@ -168,11 +168,11 @@ func (p ChatSendParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p ChatSendParams) ToURLVals(path string) (string, error) {
+func (p ChatSendParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p *ChatSendParams) IsNil() bool {
 	return *p == (ChatSendParams{})
 }
@@ -229,7 +229,7 @@ func (p *GenericRequestParams) ToURLVals(path string) (string, error) {
 	return common.EncodeURLValues(path, values), nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p *GenericRequestParams) IsNil() bool {
 	return *p == (GenericRequestParams{})
 }
@@ -247,11 +247,11 @@ func (p LeaderboardGetParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p LeaderboardGetParams) ToURLVals(path string) (string, error) {
+func (p LeaderboardGetParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p LeaderboardGetParams) IsNil() bool {
 	return p == (LeaderboardGetParams{})
 }
@@ -339,11 +339,11 @@ func (p *OrderNewParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p *OrderNewParams) ToURLVals(path string) (string, error) {
+func (p *OrderNewParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p *OrderNewParams) IsNil() bool {
 	return *p == (OrderNewParams{})
 }
@@ -404,11 +404,11 @@ func (p *OrderAmendParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p *OrderAmendParams) ToURLVals(path string) (string, error) {
+func (p *OrderAmendParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p *OrderAmendParams) IsNil() bool {
 	return *p == (OrderAmendParams{})
 }
@@ -432,11 +432,11 @@ func (p OrderCancelParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p OrderCancelParams) ToURLVals(path string) (string, error) {
+func (p OrderCancelParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p OrderCancelParams) IsNil() bool {
 	return p == (OrderCancelParams{})
 }
@@ -463,11 +463,11 @@ func (p OrderCancelAllParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p OrderCancelAllParams) ToURLVals(path string) (string, error) {
+func (p OrderCancelAllParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p OrderCancelAllParams) IsNil() bool {
 	return p == (OrderCancelAllParams{})
 }
@@ -485,11 +485,11 @@ func (p OrderAmendBulkParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p OrderAmendBulkParams) ToURLVals(path string) (string, error) {
+func (p OrderAmendBulkParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p OrderAmendBulkParams) IsNil() bool {
 	return len(p.Orders) == 0
 }
@@ -507,11 +507,11 @@ func (p OrderNewBulkParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p OrderNewBulkParams) ToURLVals(path string) (string, error) {
+func (p OrderNewBulkParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p OrderNewBulkParams) IsNil() bool {
 	return len(p.Orders) == 0
 }
@@ -530,11 +530,11 @@ func (p OrderCancelAllAfterParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p OrderCancelAllAfterParams) ToURLVals(path string) (string, error) {
+func (p OrderCancelAllAfterParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p OrderCancelAllAfterParams) IsNil() bool {
 	return p == (OrderCancelAllAfterParams{})
 }
@@ -556,11 +556,11 @@ func (p OrderClosePositionParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p OrderClosePositionParams) ToURLVals(path string) (string, error) {
+func (p OrderClosePositionParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p OrderClosePositionParams) IsNil() bool {
 	return p == (OrderClosePositionParams{})
 }
@@ -590,7 +590,7 @@ func (p OrderBookGetL2Params) ToURLVals(path string) (string, error) {
 	return common.EncodeURLValues(path, values), nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p OrderBookGetL2Params) IsNil() bool {
 	return p == (OrderBookGetL2Params{})
 }
@@ -615,11 +615,11 @@ func (p PositionGetParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p PositionGetParams) ToURLVals(path string) (string, error) {
+func (p PositionGetParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p PositionGetParams) IsNil() bool {
 	return p == (PositionGetParams{})
 }
@@ -641,11 +641,11 @@ func (p PositionIsolateMarginParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p PositionIsolateMarginParams) ToURLVals(path string) (string, error) {
+func (p PositionIsolateMarginParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p PositionIsolateMarginParams) IsNil() bool {
 	return p == (PositionIsolateMarginParams{})
 }
@@ -668,11 +668,11 @@ func (p PositionUpdateLeverageParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p PositionUpdateLeverageParams) ToURLVals(path string) (string, error) {
+func (p PositionUpdateLeverageParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p PositionUpdateLeverageParams) IsNil() bool {
 	return p == (PositionUpdateLeverageParams{})
 }
@@ -694,11 +694,11 @@ func (p PositionUpdateRiskLimitParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p PositionUpdateRiskLimitParams) ToURLVals(path string) (string, error) {
+func (p PositionUpdateRiskLimitParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p PositionUpdateRiskLimitParams) IsNil() bool {
 	return p == (PositionUpdateRiskLimitParams{})
 }
@@ -720,11 +720,11 @@ func (p PositionTransferIsolatedMarginParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p PositionTransferIsolatedMarginParams) ToURLVals(path string) (string, error) {
+func (p PositionTransferIsolatedMarginParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p PositionTransferIsolatedMarginParams) IsNil() bool {
 	return p == (PositionTransferIsolatedMarginParams{})
 }
@@ -780,11 +780,11 @@ func (p *QuoteGetBucketedParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p *QuoteGetBucketedParams) ToURLVals(path string) (string, error) {
+func (p *QuoteGetBucketedParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p *QuoteGetBucketedParams) IsNil() bool {
 	return *p == (QuoteGetBucketedParams{})
 }
@@ -841,11 +841,11 @@ func (p *TradeGetBucketedParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p *TradeGetBucketedParams) ToURLVals(path string) (string, error) {
+func (p *TradeGetBucketedParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p *TradeGetBucketedParams) IsNil() bool {
 	return *p == (TradeGetBucketedParams{})
 }
@@ -878,11 +878,11 @@ func (p *UserUpdateParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p *UserUpdateParams) ToURLVals(path string) (string, error) {
+func (p *UserUpdateParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p *UserUpdateParams) IsNil() bool {
 	return *p == (UserUpdateParams{})
 }
@@ -899,11 +899,11 @@ func (p UserTokenParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p UserTokenParams) ToURLVals(path string) (string, error) {
+func (p UserTokenParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p UserTokenParams) IsNil() bool {
 	return p == (UserTokenParams{})
 }
@@ -921,11 +921,11 @@ func (p UserCheckReferralCodeParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p UserCheckReferralCodeParams) ToURLVals(path string) (string, error) {
+func (p UserCheckReferralCodeParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p UserCheckReferralCodeParams) IsNil() bool {
 	return p == (UserCheckReferralCodeParams{})
 }
@@ -947,11 +947,11 @@ func (p UserConfirmTFAParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p UserConfirmTFAParams) ToURLVals(path string) (string, error) {
+func (p UserConfirmTFAParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p UserConfirmTFAParams) IsNil() bool {
 	return p == (UserConfirmTFAParams{})
 }
@@ -968,11 +968,11 @@ func (p UserCurrencyParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p UserCurrencyParams) ToURLVals(path string) (string, error) {
+func (p UserCurrencyParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p UserCurrencyParams) IsNil() bool {
 	return p == (UserCurrencyParams{})
 }
@@ -993,11 +993,11 @@ func (p UserPreferencesParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p UserPreferencesParams) ToURLVals(path string) (string, error) {
+func (p UserPreferencesParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p UserPreferencesParams) IsNil() bool {
 	return p == (UserPreferencesParams{})
 }
@@ -1030,11 +1030,11 @@ func (p UserRequestWithdrawalParams) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p UserRequestWithdrawalParams) ToURLVals(path string) (string, error) {
+func (p UserRequestWithdrawalParams) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p UserRequestWithdrawalParams) IsNil() bool {
 	return p == (UserRequestWithdrawalParams{})
 }
@@ -1058,11 +1058,11 @@ func (p *OrdersRequest) VerifyData() error {
 
 // ToURLVals converts struct values to url.values and encodes it on the supplied
 // path
-func (p *OrdersRequest) ToURLVals(path string) (string, error) {
+func (p *OrdersRequest) ToURLVals(_ string) (string, error) {
 	return "", nil
 }
 
-// IsNil checks to see if any values has been set for the paramater
+// IsNil checks to see if any values has been set for the parameter
 func (p *OrdersRequest) IsNil() bool {
 	return *p == (OrdersRequest{})
 }

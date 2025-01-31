@@ -9,10 +9,13 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/common/crypto"
+	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/nonce"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 )
 
@@ -20,9 +23,10 @@ const (
 	geminiAPIURL        = "https://api.gemini.com"
 	geminiSandboxAPIURL = "https://api.sandbox.gemini.com"
 	geminiAPIVersion    = "1"
+	tradeBaseURL        = "https://exchange.gemini.com/trade/"
 
 	geminiSymbols            = "symbols"
-	geminiTicker             = "pubticker"
+	geminiSymbolDetails      = "symbols/details"
 	geminiAuction            = "auction"
 	geminiAuctionHistory     = "history"
 	geminiOrderbook          = "book"
@@ -41,12 +45,13 @@ const (
 	geminiWithdraw           = "withdraw/"
 	geminiHeartbeat          = "heartbeat"
 	geminiVolume             = "notionalvolume"
+	geminiTransfers          = "transfers"
 )
 
 // Gemini is the overarching type across the Gemini package, create multiple
 // instances with differing APIkeys for segregation of roles for authenticated
 // requests & sessions by appending new sessions to the Session map using
-// AddSession, if sandbox test is needed append a new session with with the same
+// AddSession. If sandbox test is needed, append a new session with the same
 // API keys and change the IsSandbox variable to true.
 type Gemini struct {
 	exchange.Base
@@ -59,10 +64,25 @@ func (g *Gemini) GetSymbols(ctx context.Context) ([]string, error) {
 	return symbols, g.SendHTTPRequest(ctx, exchange.RestSpot, path, &symbols)
 }
 
+// GetSymbolDetails returns extra symbol details
+// use symbol "all" to get everything
+func (g *Gemini) GetSymbolDetails(ctx context.Context, symbol string) ([]SymbolDetails, error) {
+	if symbol == "all" {
+		var details []SymbolDetails
+		return details, g.SendHTTPRequest(ctx, exchange.RestSpot, "/v"+geminiAPIVersion+"/"+geminiSymbolDetails+"/"+symbol, &details)
+	}
+	var details SymbolDetails
+	err := g.SendHTTPRequest(ctx, exchange.RestSpot, "/v"+geminiAPIVersion+"/"+geminiSymbolDetails+"/"+symbol, &details)
+	if err != nil {
+		return nil, err
+	}
+	return []SymbolDetails{details}, nil
+}
+
 // GetTicker returns information about recent trading activity for the symbol
 func (g *Gemini) GetTicker(ctx context.Context, currencyPair string) (TickerV2, error) {
 	ticker := TickerV2{}
-	path := fmt.Sprintf("/v2/ticker/%s", currencyPair)
+	path := "/v2/ticker/" + currencyPair
 	err := g.SendHTTPRequest(ctx, exchange.RestSpot, path, &ticker)
 	if err != nil {
 		return ticker, err
@@ -169,6 +189,29 @@ func (g *Gemini) NewOrder(ctx context.Context, symbol string, amount, price floa
 	return response.OrderID, nil
 }
 
+// Transfers returns transfer history ie withdrawals and deposits
+func (g *Gemini) Transfers(ctx context.Context, curr currency.Code, start time.Time, limit int64, account string, showCompletedDeposit bool) ([]TransferResponse, error) {
+	req := make(map[string]interface{})
+	if !curr.IsEmpty() {
+		req["symbol"] = curr.String()
+	}
+	if !start.IsZero() {
+		req["timestamp"] = start.Unix()
+	}
+	if limit > 0 {
+		req["limit"] = limit
+	}
+	if account != "" {
+		req["account"] = account
+	}
+	if showCompletedDeposit {
+		req["showCompletedDeposit"] = showCompletedDeposit
+	}
+
+	var response []TransferResponse
+	return response, g.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, http.MethodPost, geminiTransfers, req, &response)
+}
+
 // CancelExistingOrder will cancel an order. If the order is already canceled, the
 // message will succeed but have no effect.
 func (g *Gemini) CancelExistingOrder(ctx context.Context, orderID int64) (Order, error) {
@@ -190,7 +233,7 @@ func (g *Gemini) CancelExistingOrder(ctx context.Context, orderID int64) (Order,
 // CancelExistingOrders will cancel all outstanding orders created by all
 // sessions owned by this account, including interactive orders placed through
 // the UI. If sessions = true will only cancel the order that is called on this
-// session asssociated with the APIKEY
+// session associated with the APIKEY
 func (g *Gemini) CancelExistingOrders(ctx context.Context, cancelBySession bool) (OrderResult, error) {
 	path := geminiOrderCancelAll
 	if cancelBySession {
@@ -293,7 +336,7 @@ func (g *Gemini) GetCryptoDepositAddress(ctx context.Context, depositAddlabel, c
 	response := DepositAddress{}
 	req := make(map[string]interface{})
 
-	if len(depositAddlabel) > 0 {
+	if depositAddlabel != "" {
 		req["label"] = depositAddlabel
 	}
 
@@ -325,7 +368,7 @@ func (g *Gemini) WithdrawCrypto(ctx context.Context, address, currency string, a
 }
 
 // PostHeartbeat sends a maintenance heartbeat to the exchange for all heartbeat
-// maintaned sessions
+// maintained sessions
 func (g *Gemini) PostHeartbeat(ctx context.Context) (string, error) {
 	type Response struct {
 		Result  string `json:"result"`
@@ -359,9 +402,9 @@ func (g *Gemini) SendHTTPRequest(ctx context.Context, ep exchange.URL, path stri
 		HTTPRecording: g.HTTPRecording,
 	}
 
-	return g.SendPayload(ctx, request.Unset, func() (*request.Item, error) {
+	return g.SendPayload(ctx, request.UnAuth, func() (*request.Item, error) {
 		return item, nil
-	})
+	}, request.UnauthenticatedRequest)
 }
 
 // SendAuthenticatedHTTPRequest sends an authenticated HTTP request to the
@@ -380,7 +423,7 @@ func (g *Gemini) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange.U
 	return g.SendPayload(ctx, request.Auth, func() (*request.Item, error) {
 		req := make(map[string]interface{})
 		req["request"] = fmt.Sprintf("/v%s/%s", geminiAPIVersion, path)
-		req["nonce"] = g.Requester.GetNonce(true).String()
+		req["nonce"] = g.Requester.GetNonce(nonce.UnixNano).String()
 
 		for key, value := range params {
 			req[key] = value
@@ -412,13 +455,12 @@ func (g *Gemini) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange.U
 			Path:          endpoint + "/v1/" + path,
 			Headers:       headers,
 			Result:        result,
-			AuthRequest:   true,
 			NonceEnabled:  true,
 			Verbose:       g.Verbose,
 			HTTPDebugging: g.HTTPDebugging,
 			HTTPRecording: g.HTTPRecording,
 		}, nil
-	})
+	}, request.AuthenticatedRequest)
 }
 
 // GetFee returns an estimate of fee based on type of transaction

@@ -8,6 +8,8 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventhandlers/portfolio/compliance"
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventhandlers/portfolio/holdings"
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventtypes/order"
+	gctcommon "github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/common/key"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 )
 
@@ -15,7 +17,7 @@ import (
 // we are in a position to follow through with an order
 func (r *Risk) EvaluateOrder(o order.Event, latestHoldings []holdings.Holding, s compliance.Snapshot) (*order.Order, error) {
 	if o == nil || latestHoldings == nil {
-		return nil, common.ErrNilArguments
+		return nil, gctcommon.ErrNilPointer
 	}
 	retOrder, ok := o.(*order.Order)
 	if !ok {
@@ -23,8 +25,13 @@ func (r *Risk) EvaluateOrder(o order.Event, latestHoldings []holdings.Holding, s
 	}
 	ex := o.GetExchange()
 	a := o.GetAssetType()
-	p := o.Pair()
-	lookup, ok := r.CurrencySettings[ex][a][p]
+	p := o.Pair().Format(currency.EMPTYFORMAT)
+	lookup, ok := r.CurrencySettings[key.ExchangePairAsset{
+		Exchange: ex,
+		Base:     p.Base.Item,
+		Quote:    p.Quote.Item,
+		Asset:    a,
+	}]
 	if !ok {
 		return nil, fmt.Errorf("%v %v %v %w", ex, a, p, errNoCurrencySettings)
 	}

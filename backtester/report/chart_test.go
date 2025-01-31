@@ -6,13 +6,15 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
-	"github.com/thrasher-corp/gocryptotrader/backtester/common"
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventhandlers/portfolio"
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventhandlers/statistics"
 	evkline "github.com/thrasher-corp/gocryptotrader/backtester/eventtypes/kline"
 	"github.com/thrasher-corp/gocryptotrader/backtester/funding"
+	gctcommon "github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/common/key"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/futures"
 	gctkline "github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	gctorder "github.com/thrasher-corp/gocryptotrader/exchanges/order"
 )
@@ -20,8 +22,8 @@ import (
 func TestCreateUSDTotalsChart(t *testing.T) {
 	t.Parallel()
 	_, err := createUSDTotalsChart(nil, nil)
-	if !errors.Is(err, common.ErrNilArguments) {
-		t.Errorf("received '%v' expected '%v'", err, common.ErrNilArguments)
+	if !errors.Is(err, gctcommon.ErrNilPointer) {
+		t.Errorf("received '%v' expected '%v'", err, gctcommon.ErrNilPointer)
 	}
 	tt := time.Now()
 	items := []statistics.ValueAtTime{
@@ -32,8 +34,8 @@ func TestCreateUSDTotalsChart(t *testing.T) {
 		},
 	}
 	_, err = createUSDTotalsChart(items, nil)
-	if !errors.Is(err, common.ErrNilArguments) {
-		t.Errorf("received '%v' expected '%v'", err, common.ErrNilArguments)
+	if !errors.Is(err, gctcommon.ErrNilPointer) {
+		t.Errorf("received '%v' expected '%v'", err, gctcommon.ErrNilPointer)
 	}
 	stats := []statistics.FundingItemStatistics{
 		{
@@ -65,8 +67,8 @@ func TestCreateUSDTotalsChart(t *testing.T) {
 func TestCreateHoldingsOverTimeChart(t *testing.T) {
 	t.Parallel()
 	_, err := createHoldingsOverTimeChart(nil)
-	if !errors.Is(err, common.ErrNilArguments) {
-		t.Errorf("received '%v' expected '%v'", err, common.ErrNilArguments)
+	if !errors.Is(err, gctcommon.ErrNilPointer) {
+		t.Errorf("received '%v' expected '%v'", err, gctcommon.ErrNilPointer)
 	}
 	tt := time.Now()
 	items := []statistics.FundingItemStatistics{
@@ -100,21 +102,24 @@ func TestCreateHoldingsOverTimeChart(t *testing.T) {
 func TestCreatePNLCharts(t *testing.T) {
 	t.Parallel()
 	_, err := createPNLCharts(nil)
-	if !errors.Is(err, common.ErrNilArguments) {
-		t.Errorf("received '%v' expected '%v'", err, common.ErrNilArguments)
+	if !errors.Is(err, gctcommon.ErrNilPointer) {
+		t.Errorf("received '%v' expected '%v'", err, gctcommon.ErrNilPointer)
 	}
 
 	tt := time.Now()
 	var d Data
 	d.Statistics = &statistics.Statistic{}
-	d.Statistics.ExchangeAssetPairStatistics = make(map[string]map[asset.Item]map[currency.Pair]*statistics.CurrencyPairStatistic)
-	d.Statistics.ExchangeAssetPairStatistics[testExchange] = make(map[asset.Item]map[currency.Pair]*statistics.CurrencyPairStatistic)
-	d.Statistics.ExchangeAssetPairStatistics[testExchange][asset.Spot] = make(map[currency.Pair]*statistics.CurrencyPairStatistic)
-	d.Statistics.ExchangeAssetPairStatistics[testExchange][asset.Spot][currency.NewPair(currency.BTC, currency.USDT)] = &statistics.CurrencyPairStatistic{
+	d.Statistics.ExchangeAssetPairStatistics = make(map[key.ExchangePairAsset]*statistics.CurrencyPairStatistic)
+	d.Statistics.ExchangeAssetPairStatistics[key.ExchangePairAsset{
+		Exchange: testExchange,
+		Base:     currency.BTC.Item,
+		Quote:    currency.USDT.Item,
+		Asset:    asset.Spot,
+	}] = &statistics.CurrencyPairStatistic{
 		Events: []statistics.DataAtOffset{
 			{
 				PNL: &portfolio.PNLSummary{
-					Result: gctorder.PNLResult{
+					Result: futures.PNLResult{
 						Time:                  tt,
 						UnrealisedPNL:         decimal.NewFromInt(1337),
 						RealisedPNLBeforeFees: decimal.NewFromInt(1337),
@@ -128,7 +133,7 @@ func TestCreatePNLCharts(t *testing.T) {
 		},
 	}
 
-	d.AddKlineItem(&gctkline.Item{
+	err = d.SetKlineData(&gctkline.Item{
 		Exchange: testExchange,
 		Pair:     currency.NewPair(currency.BTC, currency.USDT),
 		Asset:    asset.Spot,
@@ -144,9 +149,12 @@ func TestCreatePNLCharts(t *testing.T) {
 			},
 		},
 	})
+	if !errors.Is(err, nil) {
+		t.Errorf("received: %v, expected: %v", err, nil)
+	}
 	err = d.enhanceCandles()
-	if err != nil {
-		t.Error(err)
+	if !errors.Is(err, nil) {
+		t.Errorf("received: %v, expected: %v", err, nil)
 	}
 
 	_, err = createPNLCharts(d.Statistics.ExchangeAssetPairStatistics)
@@ -158,8 +166,8 @@ func TestCreatePNLCharts(t *testing.T) {
 func TestCreateFuturesSpotDiffChart(t *testing.T) {
 	t.Parallel()
 	_, err := createFuturesSpotDiffChart(nil)
-	if !errors.Is(err, common.ErrNilArguments) {
-		t.Errorf("received '%v' expected '%v'", err, common.ErrNilArguments)
+	if !errors.Is(err, gctcommon.ErrNilPointer) {
+		t.Errorf("received '%v' expected '%v'", err, gctcommon.ErrNilPointer)
 	}
 
 	tt := time.Now()
@@ -167,17 +175,20 @@ func TestCreateFuturesSpotDiffChart(t *testing.T) {
 	cp2 := currency.NewPair(currency.BTC, currency.DOGE)
 	var d Data
 	d.Statistics = &statistics.Statistic{}
-	d.Statistics.ExchangeAssetPairStatistics = make(map[string]map[asset.Item]map[currency.Pair]*statistics.CurrencyPairStatistic)
-	d.Statistics.ExchangeAssetPairStatistics[testExchange] = make(map[asset.Item]map[currency.Pair]*statistics.CurrencyPairStatistic)
-	d.Statistics.ExchangeAssetPairStatistics[testExchange][asset.Spot] = make(map[currency.Pair]*statistics.CurrencyPairStatistic)
-	d.Statistics.ExchangeAssetPairStatistics[testExchange][asset.Spot][cp] = &statistics.CurrencyPairStatistic{
+	d.Statistics.ExchangeAssetPairStatistics = make(map[key.ExchangePairAsset]*statistics.CurrencyPairStatistic)
+	d.Statistics.ExchangeAssetPairStatistics[key.ExchangePairAsset{
+		Exchange: testExchange,
+		Base:     currency.BTC.Item,
+		Quote:    currency.USD.Item,
+		Asset:    asset.Spot,
+	}] = &statistics.CurrencyPairStatistic{
 		Currency: cp,
 		Events: []statistics.DataAtOffset{
 			{
 				Time:      tt,
 				DataEvent: &evkline.Kline{Close: decimal.NewFromInt(1337)},
 				PNL: &portfolio.PNLSummary{
-					Result: gctorder.PNLResult{
+					Result: futures.PNLResult{
 						Time:                  tt,
 						UnrealisedPNL:         decimal.NewFromInt(1337),
 						RealisedPNLBeforeFees: decimal.NewFromInt(1337),
@@ -190,8 +201,12 @@ func TestCreateFuturesSpotDiffChart(t *testing.T) {
 			},
 		},
 	}
-	d.Statistics.ExchangeAssetPairStatistics[testExchange][asset.Futures] = make(map[currency.Pair]*statistics.CurrencyPairStatistic)
-	d.Statistics.ExchangeAssetPairStatistics[testExchange][asset.Futures][cp2] = &statistics.CurrencyPairStatistic{
+	d.Statistics.ExchangeAssetPairStatistics[key.ExchangePairAsset{
+		Exchange: testExchange,
+		Base:     currency.BTC.Item,
+		Quote:    currency.DOGE.Item,
+		Asset:    asset.Futures,
+	}] = &statistics.CurrencyPairStatistic{
 		UnderlyingPair: cp,
 		Currency:       cp2,
 		Events: []statistics.DataAtOffset{
@@ -199,7 +214,7 @@ func TestCreateFuturesSpotDiffChart(t *testing.T) {
 				Time:      tt,
 				DataEvent: &evkline.Kline{Close: decimal.NewFromInt(1337)},
 				PNL: &portfolio.PNLSummary{
-					Result: gctorder.PNLResult{
+					Result: futures.PNLResult{
 						Time:                  tt,
 						UnrealisedPNL:         decimal.NewFromInt(1337),
 						RealisedPNLBeforeFees: decimal.NewFromInt(1337),

@@ -1,15 +1,23 @@
 package bithumb
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+	"text/template"
 	"time"
 
+	"github.com/Masterminds/sprig/v3"
 	"github.com/gorilla/websocket"
+	"github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 )
@@ -17,18 +25,23 @@ import (
 const (
 	wsEndpoint       = "wss://pubwss.bithumb.com/pub/ws"
 	tickerTimeLayout = "20060102150405"
-	tradeTimeLayout  = "2006-01-02 15:04:05.000000"
+	tradeTimeLayout  = time.DateTime + ".000000"
 )
 
 var (
-	wsDefaultTickTypes = []string{"30M"} // alternatives "1H", "12H", "24H", "MID"
-	location           *time.Location
+	location *time.Location
 )
+
+var defaultSubscriptions = subscription.List{
+	{Enabled: true, Asset: asset.Spot, Channel: subscription.TickerChannel, Interval: kline.ThirtyMin}, // alternatives "1H", "12H", "24H"
+	{Enabled: true, Asset: asset.Spot, Channel: subscription.OrderbookChannel},
+	{Enabled: true, Asset: asset.Spot, Channel: subscription.AllTradesChannel},
+}
 
 // WsConnect initiates a websocket connection
 func (b *Bithumb) WsConnect() error {
 	if !b.Websocket.IsEnabled() || !b.IsEnabled() {
-		return errors.New(stream.WebsocketNotEnabled)
+		return stream.ErrWebsocketNotEnabled
 	}
 
 	var dialer websocket.Dialer
@@ -77,7 +90,7 @@ func (b *Bithumb) wsHandleData(respRaw []byte) error {
 		return err
 	}
 
-	if len(resp.Status) > 0 {
+	if resp.Status != "" {
 		if resp.Status == "0000" {
 			return nil
 		}
@@ -166,57 +179,56 @@ func (b *Bithumb) wsHandleData(respRaw []byte) error {
 	return nil
 }
 
-// GenerateSubscriptions generates the default subscription set
-func (b *Bithumb) GenerateSubscriptions() ([]stream.ChannelSubscription, error) {
-	var channels = []string{"ticker", "transaction", "orderbookdepth"}
-	var subscriptions []stream.ChannelSubscription
-	pairs, err := b.GetEnabledPairs(asset.Spot)
-	if err != nil {
-		return nil, err
-	}
+// generateSubscriptions generates the default subscription set
+func (b *Bithumb) generateSubscriptions() (subscription.List, error) {
+	return b.Features.Subscriptions.ExpandTemplates(b)
+}
 
-	pFmt, err := b.GetPairFormat(asset.Spot, true)
-	if err != nil {
-		return nil, err
-	}
-
-	for x := range pairs {
-		for y := range channels {
-			subscriptions = append(subscriptions, stream.ChannelSubscription{
-				Channel:  channels[y],
-				Currency: pairs[x].Format(pFmt),
-				Asset:    asset.Spot,
-			})
-		}
-	}
-	return subscriptions, nil
+// GetSubscriptionTemplate returns a subscription channel template
+func (b *Bithumb) GetSubscriptionTemplate(_ *subscription.Subscription) (*template.Template, error) {
+	return template.New("master.tmpl").Funcs(sprig.FuncMap()).Funcs(template.FuncMap{"subToReq": subToReq}).Parse(subTplText)
 }
 
 // Subscribe subscribes to a set of channels
-func (b *Bithumb) Subscribe(channelsToSubscribe []stream.ChannelSubscription) error {
-	subs := make(map[string]*WsSubscribe)
-	for i := range channelsToSubscribe {
-		s, ok := subs[channelsToSubscribe[i].Channel]
-		if !ok {
-			s = &WsSubscribe{
-				Type: channelsToSubscribe[i].Channel,
-			}
-			subs[channelsToSubscribe[i].Channel] = s
-		}
-		s.Symbols = append(s.Symbols, channelsToSubscribe[i].Currency)
-	}
-
-	tSub, ok := subs["ticker"]
-	if ok {
-		tSub.TickTypes = wsDefaultTickTypes
-	}
-
+func (b *Bithumb) Subscribe(subs subscription.List) error {
+	var errs error
 	for _, s := range subs {
-		err := b.Websocket.Conn.SendJSONMessage(s)
+		err := b.Websocket.Conn.SendJSONMessage(context.TODO(), request.Unset, json.RawMessage(s.QualifiedChannel))
+		if err == nil {
+			err = b.Websocket.AddSuccessfulSubscriptions(b.Websocket.Conn, s)
+		}
 		if err != nil {
-			return err
+			errs = common.AppendError(errs, err)
 		}
 	}
-	b.Websocket.AddSuccessfulSubscriptions(channelsToSubscribe...)
-	return nil
+	return errs
 }
+
+// subToReq returns the subscription as a map to populate WsSubscribe
+func subToReq(s *subscription.Subscription, p currency.Pairs) *WsSubscribe {
+	req := &WsSubscribe{
+		Type:    s.Channel,
+		Symbols: common.SortStrings(p),
+	}
+	switch s.Channel {
+	case subscription.TickerChannel:
+		// As-is
+	case subscription.OrderbookChannel:
+		req.Type = "orderbookdepth"
+	case subscription.AllTradesChannel:
+		req.Type = "transaction"
+	default:
+		panic(fmt.Errorf("%w: %s", subscription.ErrNotSupported, s.Channel))
+	}
+	if s.Interval > 0 {
+		req.TickTypes = []string{strings.ToUpper(s.Interval.Short())}
+	}
+	return req
+}
+
+const subTplText = `
+{{ range $asset, $pairs := $.AssetPairs }}
+	{{- subToReq $.S $pairs | mustToJson }}
+	{{- $.AssetSeparator }}
+{{- end }}
+`

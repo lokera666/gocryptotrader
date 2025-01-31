@@ -250,6 +250,7 @@ type FuturesInstrumentData struct {
 		Symbol          string  `json:"symbol"`
 		FutureType      string  `json:"type"`
 		Underlying      string  `json:"underlying"`
+		OpeningDate     string  `json:"openingDate"`
 		LastTradingTime string  `json:"lastTradingTime"`
 		TickSize        float64 `json:"tickSize"`
 		ContractSize    float64 `json:"contractSize"`
@@ -274,28 +275,16 @@ type FuturesTradeHistoryData struct {
 	} `json:"history"`
 }
 
+// FuturesTickersData stores info for futures tickers
+type FuturesTickersData struct {
+	Tickers    []FuturesTicker `json:"tickers"`
+	ServerTime string          `json:"serverTime"`
+}
+
 // FuturesTickerData stores info for futures ticker
 type FuturesTickerData struct {
-	Tickers []struct {
-		Tag                   string  `json:"tag"`
-		Pair                  string  `json:"pair"`
-		Symbol                string  `json:"symbol"`
-		MarkPrice             float64 `json:"markPrice"`
-		Bid                   float64 `json:"bid"`
-		BidSize               float64 `json:"bidSize"`
-		Ask                   float64 `json:"ask"`
-		AskSize               float64 `json:"askSize"`
-		Vol24h                float64 `json:"vol24h"`
-		OpenInterest          float64 `json:"openInterest"`
-		Open24H               float64 `json:"open24h"`
-		Last                  float64 `json:"last"`
-		LastTime              string  `json:"lastTime"`
-		LastSize              float64 `json:"lastSize"`
-		Suspended             bool    `json:"suspended"`
-		FundingRate           float64 `json:"fundingRate"`
-		FundingRatePrediction float64 `json:"fundingRatePrediction"`
-	} `json:"tickers"`
-	ServerTime string `json:"serverTime"`
+	Ticker     FuturesTicker `json:"ticker"`
+	ServerTime string        `json:"serverTime"`
 }
 
 // FuturesEditedOrderData stores an edited order's data
@@ -312,6 +301,30 @@ type FuturesEditedOrderData struct {
 		ReduceQuantity string `json:"reduceQuantity"`
 		DataType       string `json:"type"`
 	} `json:"editStatus"`
+}
+
+// FuturesTicker  holds futures ticker data
+type FuturesTicker struct {
+	Tag                   string  `json:"tag"`
+	Pair                  string  `json:"pair"`
+	Symbol                string  `json:"symbol"`
+	MarkPrice             float64 `json:"markPrice"`
+	Bid                   float64 `json:"bid"`
+	BidSize               float64 `json:"bidSize"`
+	Ask                   float64 `json:"ask"`
+	AskSize               float64 `json:"askSize"`
+	Vol24h                float64 `json:"vol24h"`
+	OpenInterest          float64 `json:"openInterest"`
+	Open24H               float64 `json:"open24h"`
+	Last                  float64 `json:"last"`
+	LastTime              string  `json:"lastTime"`
+	LastSize              float64 `json:"lastSize"`
+	Suspended             bool    `json:"suspended"`
+	FundingRate           float64 `json:"fundingRate"`
+	FundingRatePrediction float64 `json:"fundingRatePrediction"`
+	IndexPrice            float64 `json:"indexPrice"`
+	PostOnly              bool    `json:"postOnly"`
+	Change24H             float64 `json:"change24h"`
 }
 
 // FuturesSendOrderData stores send order data
@@ -401,7 +414,7 @@ type FuturesNotificationData struct {
 		Priority         string `json:"priority"`
 		Note             string `json:"note"`
 		EffectiveTime    string `json:"effectiveTime"`
-	} `json:"notifcations"`
+	} `json:"notifications"`
 	ServerTime string `json:"serverTime"`
 }
 
@@ -574,4 +587,73 @@ type FuturesOpenOrdersData struct {
 	Result     string            `json:"result"`
 	OpenOrders []FOpenOrdersData `json:"openOrders"`
 	ServerTime string            `json:"serverTime"`
+}
+
+// FuturesPublicTrades returns public trade data
+// a terrible type for parsing data
+type FuturesPublicTrades struct {
+	ContinuationToken string `json:"continuationToken"`
+	Elements          []struct {
+		ExecutionEvent struct {
+			OuterExecutionHolder struct {
+				Execution struct {
+					LimitFilled    bool                  `json:"limitFilled"`
+					MakerOrder     FutureTradeOrder      `json:"makerOrder"`
+					MakerOrderData FuturesTradeOrderData `json:"makerOrderData"`
+					MarkPrice      float64               `json:"markPrice,string"`
+					OldTakerOrder  FutureTradeOrder      `json:"oldTakerOrder"`
+					Price          float64               `json:"price,string"`
+					Quantity       float64               `json:"quantity,string"`
+					TakerOrder     FutureTradeOrder      `json:"takerOrder"`
+					TakerOrderData FuturesTradeOrderData `json:"takerOrderData"`
+					Timestamp      int64                 `json:"timestamp"`
+					UID            string                `json:"uid"`
+					UsdValue       float64               `json:"usdValue,string"`
+				} `json:"execution"`
+				TakerReducedQuantity string `json:"takerReducedQuantity"`
+			} `json:"execution"`
+		} `json:"event"`
+		Timestamp int64  `json:"timestamp"`
+		UID       string `json:"uid"`
+	} `json:"elements"`
+	Len int64 `json:"len"`
+}
+
+// FutureTradeOrder holds details about the order for a futures trade
+type FutureTradeOrder struct {
+	AccountUID          string  `json:"accountUid"`
+	ClientID            string  `json:"clientId"`
+	Direction           string  `json:"direction"`
+	Filled              string  `json:"filled"`
+	LastUpdateTimestamp int64   `json:"lastUpdateTimestamp"`
+	LimitPrice          float64 `json:"limitPrice,string"`
+	OrderType           string  `json:"orderType"`
+	Quantity            float64 `json:"quantity,string"`
+	ReduceOnly          bool    `json:"reduceOnly"`
+	SpotData            string  `json:"spotData"`
+	Timestamp           int64   `json:"timestamp"`
+	Tradeable           string  `json:"tradeable"`
+	UID                 string  `json:"uid"`
+}
+
+// FuturesTradeOrderData holds additional order details for a futures trade order
+type FuturesTradeOrderData struct {
+	Fee          float64 `json:"fee,string"`
+	PositionSize float64 `json:"positionSize,string"`
+}
+
+// FuturesCandles is the response when requesting futures candles
+type FuturesCandles struct {
+	Candles     []FuturesCandle `json:"candles"`
+	MoreCandles bool            `json:"more_candles"`
+}
+
+// FuturesCandle is an individual candle
+type FuturesCandle struct {
+	Close  float64 `json:"close,string"`
+	High   float64 `json:"high,string"`
+	Low    float64 `json:"low,string"`
+	Open   float64 `json:"open,string"`
+	Time   int64   `json:"time"`
+	Volume float64 `json:"volume,string"`
 }

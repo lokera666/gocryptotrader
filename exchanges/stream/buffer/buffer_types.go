@@ -4,8 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thrasher-corp/gocryptotrader/currency"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/common/key"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
 )
 
@@ -30,7 +29,7 @@ type Config struct {
 // Orderbook defines a local cache of orderbooks for amending, appending
 // and deleting changes and updates the main store for a stream
 type Orderbook struct {
-	ob                    map[currency.Code]map[currency.Code]map[asset.Item]*orderbookHolder
+	ob                    map[key.PairAsset]*orderbookHolder
 	obBufferLimit         int
 	bufferEnabled         bool
 	sortBuffer            bool
@@ -47,7 +46,12 @@ type Orderbook struct {
 	checksum func(state *orderbook.Base, checksum uint32) error
 
 	publishPeriod time.Duration
-	m             sync.Mutex
+
+	// TODO: sync.RWMutex. For the moment we process the orderbook in a single
+	// thread. In future when there are workers directly involved this can be
+	// can be improved with RW mechanics which will allow updates to occur at
+	// the same time on different books.
+	mtx sync.Mutex
 }
 
 // orderbookHolder defines a store of pending updates and a pointer to the

@@ -9,14 +9,18 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/common/convert"
 	"github.com/thrasher-corp/gocryptotrader/common/crypto"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/nonce"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
@@ -24,6 +28,7 @@ import (
 
 const (
 	bitfinexAPIURLBase = "https://api.bitfinex.com"
+	tradeBaseURL       = "https://trading.bitfinex.com"
 	// Version 1 API endpoints
 	bitfinexAPIVersion         = "/v1/"
 	bitfinexStats              = "stats/"
@@ -40,12 +45,12 @@ const (
 	bitfinexOrderCancelAll     = "order/cancel/all"
 	bitfinexOrderCancelReplace = "order/cancel/replace"
 	bitfinexOrderStatus        = "order/status"
-	bitfinexInactiveOrders     = "orders/hist"
+	bitfinexInactiveOrders     = "hist"
 	bitfinexOrders             = "orders"
 	bitfinexPositions          = "positions"
 	bitfinexClaimPosition      = "position/claim"
 	bitfinexHistory            = "history"
-	bitfinexHistoryMovements   = "history/movements"
+	bitfinexHistoryMovements   = "movements"
 	bitfinexTradeHistory       = "mytrades"
 	bitfinexOfferNew           = "offer/new"
 	bitfinexOfferCancel        = "offer/cancel"
@@ -66,19 +71,29 @@ const (
 	bitfinexV2AccountInfo   = "auth/r/info/user"
 	bitfinexV2MarginInfo    = "auth/r/info/margin/"
 	bitfinexV2FundingInfo   = "auth/r/info/funding/%s"
+	bitfinexV2Auth          = "auth/"
 	bitfinexDerivativeData  = "status/deriv?"
 	bitfinexPlatformStatus  = "platform/status"
 	bitfinexTickerBatch     = "tickers"
 	bitfinexTicker          = "ticker/"
 	bitfinexTrades          = "trades/"
 	bitfinexOrderbook       = "book/"
-	bitfinexStatistics      = "stats1/"
+	bitfinexHistoryShort    = "hist"
 	bitfinexCandles         = "candles/trade"
 	bitfinexKeyPermissions  = "key_info"
 	bitfinexMarginInfo      = "margin_infos"
 	bitfinexDepositMethod   = "conf/pub:map:tx:method"
 	bitfinexDepositAddress  = "auth/w/deposit/address"
-	bitfinexMarginPairs     = "conf/pub:list:pair:margin"
+	bitfinexOrderUpdate     = "auth/w/order/update"
+
+	bitfinexMarginPairs        = "conf/pub:list:pair:margin"
+	bitfinexSpotPairs          = "conf/pub:list:pair:exchange"
+	bitfinexMarginFundingPairs = "conf/pub:list:currency"
+	bitfinexFuturesPairs       = "conf/pub:list:pair:futures"    // TODO: Implement
+	bitfinexSecuritiesPairs    = "conf/pub:list:pair:securities" // TODO: Implement
+
+	bitfinexInfoPairs       = "conf/pub:info:pair"
+	bitfinexInfoFuturePairs = "conf/pub:info:pair:futures"
 
 	// Bitfinex platform status values
 	// When the platform is marked in maintenance mode bots should stop trading
@@ -88,12 +103,14 @@ const (
 
 	bitfinexChecksumFlag   = 131072
 	bitfinexWsSequenceFlag = 65536
+
+	// CandlesPeriodKey configures the Candles aggregated period for MarginFunding in subscription.Subscription.Params
+	CandlesPeriodKey = "_period"
 )
 
 // Bitfinex is the overarching type across the bitfinex package
 type Bitfinex struct {
 	exchange.Base
-	WebsocketSubdChannels map[int]WebsocketChanInfo
 }
 
 // GetPlatformStatus returns the Bifinex platform status
@@ -120,29 +137,24 @@ func (b *Bitfinex) GetPlatformStatus(ctx context.Context) (int, error) {
 
 func baseMarginInfo(data []interface{}) (MarginInfoV2, error) {
 	var resp MarginInfoV2
-	tempData, ok := data[1].([]interface{})
+	marginInfo, ok := data[1].([]any)
 	if !ok {
-		return resp, fmt.Errorf("%w", errTypeAssert)
+		return resp, common.GetTypeAssertError("[]any", data[1], "MarginInfo")
 	}
-	resp.UserPNL, ok = tempData[0].(float64)
-	if !ok {
-		return resp, fmt.Errorf("%w for UserPNL", errTypeAssert)
+	if resp.UserPNL, ok = marginInfo[0].(float64); !ok {
+		return resp, common.GetTypeAssertError("float64", marginInfo[0], "UserPNL")
 	}
-	resp.UserSwaps, ok = tempData[1].(float64)
-	if !ok {
-		return resp, fmt.Errorf("%w for UserSwaps", errTypeAssert)
+	if resp.UserSwaps, ok = marginInfo[1].(float64); !ok {
+		return resp, common.GetTypeAssertError("float64", marginInfo[1], "UserSwaps")
 	}
-	resp.MarginBalance, ok = tempData[2].(float64)
-	if !ok {
-		return resp, fmt.Errorf("%w for MarginBalance", errTypeAssert)
+	if resp.MarginBalance, ok = marginInfo[2].(float64); !ok {
+		return resp, common.GetTypeAssertError("float64", marginInfo[2], "MarginBalance")
 	}
-	resp.MarginNet, ok = tempData[3].(float64)
-	if !ok {
-		return resp, fmt.Errorf("%w for MarginNet", errTypeAssert)
+	if resp.MarginNet, ok = marginInfo[3].(float64); !ok {
+		return resp, common.GetTypeAssertError("float64", marginInfo[3], "MarginNet")
 	}
-	resp.MarginMin, ok = tempData[4].(float64)
-	if !ok {
-		return resp, fmt.Errorf("%w for MarginMin", errTypeAssert)
+	if resp.MarginMin, ok = marginInfo[4].(float64); !ok {
+		return resp, common.GetTypeAssertError("float64", marginInfo[4], "MarginMin")
 	}
 	return resp, nil
 }
@@ -151,37 +163,32 @@ func symbolMarginInfo(data []interface{}) ([]MarginInfoV2, error) {
 	resp := make([]MarginInfoV2, len(data))
 	for x := range data {
 		var tempResp MarginInfoV2
-		tempData, ok := data[x].([]interface{})
+		marginInfo, ok := data[x].([]any)
 		if !ok {
-			return nil, fmt.Errorf("%w for all sym", errTypeAssert)
+			return nil, common.GetTypeAssertError("[]any", data[x], "MarginInfo")
 		}
 		var check bool
-		tempResp.Symbol, check = tempData[1].(string)
-		if !check {
-			return nil, fmt.Errorf("%w for symbol data", errTypeAssert)
+		if tempResp.Symbol, check = marginInfo[1].(string); !check {
+			return nil, common.GetTypeAssertError("string", marginInfo[1], "Symbol")
 		}
-		tempFloatData, check := tempData[2].([]interface{})
+		pairMarginInfo, check := marginInfo[2].([]any)
 		if !check {
-			return nil, fmt.Errorf("%w for symbol data", errTypeAssert)
+			return nil, common.GetTypeAssertError("[]any", marginInfo[2], "MarginInfo.Data")
 		}
-		if len(tempFloatData) < 4 {
+		if len(pairMarginInfo) < 4 {
 			return nil, errors.New("invalid data received")
 		}
-		tempResp.TradableBalance, ok = tempFloatData[0].(float64)
-		if !ok {
-			return nil, fmt.Errorf("%w for TradableBalance", errTypeAssert)
+		if tempResp.TradableBalance, ok = pairMarginInfo[0].(float64); !ok {
+			return nil, common.GetTypeAssertError("float64", pairMarginInfo[0], "MarginInfo.Data.TradableBalance")
 		}
-		tempResp.GrossBalance, ok = tempFloatData[1].(float64)
-		if !ok {
-			return nil, fmt.Errorf("%w for GrossBalance", errTypeAssert)
+		if tempResp.GrossBalance, ok = pairMarginInfo[1].(float64); !ok {
+			return nil, common.GetTypeAssertError("float64", pairMarginInfo[1], "MarginInfo.Data.GlossBalance")
 		}
-		tempResp.BestAskAmount, ok = tempFloatData[2].(float64)
-		if !ok {
-			return nil, fmt.Errorf("%w for BestAskAmount", errTypeAssert)
+		if tempResp.BestAskAmount, ok = pairMarginInfo[2].(float64); !ok {
+			return nil, common.GetTypeAssertError("float64", pairMarginInfo[2], "MarginInfo.Data.BestAskAmount")
 		}
-		tempResp.BestBidAmount, ok = tempFloatData[3].(float64)
-		if !ok {
-			return nil, fmt.Errorf("%w for BestBidAmount", errTypeAssert)
+		if tempResp.BestBidAmount, ok = pairMarginInfo[3].(float64); !ok {
+			return nil, common.GetTypeAssertError("float64", pairMarginInfo[3], "MarginInfo.Data.BestBidAmount")
 		}
 		resp[x] = tempResp
 	}
@@ -191,32 +198,27 @@ func symbolMarginInfo(data []interface{}) ([]MarginInfoV2, error) {
 func defaultMarginV2Info(data []interface{}) (MarginInfoV2, error) {
 	var resp MarginInfoV2
 	var ok bool
-	resp.Symbol, ok = data[1].(string)
-	if !ok {
-		return resp, fmt.Errorf("%w for symbol", errTypeAssert)
+	if resp.Symbol, ok = data[1].(string); !ok {
+		return resp, common.GetTypeAssertError("string", data[1], "Symbol")
 	}
-	tempData, check := data[2].([]interface{})
+	marginInfo, check := data[2].([]any)
 	if !check {
-		return resp, fmt.Errorf("%w for symbol data", errTypeAssert)
+		return resp, common.GetTypeAssertError("[]any", data[2], "MarginInfo.Data")
 	}
-	if len(tempData) < 4 {
+	if len(marginInfo) < 4 {
 		return resp, errors.New("invalid data received")
 	}
-	resp.TradableBalance, ok = tempData[0].(float64)
-	if !ok {
-		return resp, fmt.Errorf("%w for TradableBalance", errTypeAssert)
+	if resp.TradableBalance, ok = marginInfo[0].(float64); !ok {
+		return resp, common.GetTypeAssertError("float64", marginInfo[0], "MarginInfo.Data.TradableBalance")
 	}
-	resp.GrossBalance, ok = tempData[1].(float64)
-	if !ok {
-		return resp, fmt.Errorf("%w for GrossBalance", errTypeAssert)
+	if resp.GrossBalance, ok = marginInfo[1].(float64); !ok {
+		return resp, common.GetTypeAssertError("float64", marginInfo[1], "MarginInfo.Data.GrossBalance")
 	}
-	resp.BestAskAmount, ok = tempData[2].(float64)
-	if !ok {
-		return resp, fmt.Errorf("%w for BestAskAmount", errTypeAssert)
+	if resp.BestAskAmount, ok = marginInfo[2].(float64); !ok {
+		return resp, common.GetTypeAssertError("float64", marginInfo[2], "MarginInfo.Data.BestAskAmount")
 	}
-	resp.BestBidAmount, ok = tempData[3].(float64)
-	if !ok {
-		return resp, fmt.Errorf("%w for BestBidAmount", errTypeAssert)
+	if resp.BestBidAmount, ok = marginInfo[3].(float64); !ok {
+		return resp, common.GetTypeAssertError("float64", marginInfo[3], "MarginInfo.Data.BestBidAmount")
 	}
 	return resp, nil
 }
@@ -275,11 +277,11 @@ func (b *Bitfinex) GetV2MarginFunding(ctx context.Context, symbol, amount string
 	}
 	avgRate, ok := resp[0].(float64)
 	if !ok {
-		return response, fmt.Errorf("%v - %v: %w for rate", b.Name, symbol, errTypeAssert)
+		return response, common.GetTypeAssertError("float64", resp[0], "MarketAveragePrice.PriceOrRate")
 	}
 	avgAmount, ok := resp[1].(float64)
 	if !ok {
-		return response, fmt.Errorf("%v - %v: %w for amount", b.Name, symbol, errTypeAssert)
+		return response, common.GetTypeAssertError("float64", resp[1], "MarketAveragePrice.Amount")
 	}
 	response.Symbol = symbol
 	response.RateAverage = avgRate
@@ -304,15 +306,15 @@ func (b *Bitfinex) GetV2FundingInfo(ctx context.Context, key string) (MarginFund
 	}
 	sym, ok := resp[0].(string)
 	if !ok {
-		return response, fmt.Errorf("%v GetV2FundingInfo: %w for sym", b.Name, errTypeAssert)
+		return response, common.GetTypeAssertError("string", resp[0], "FundingInfo.sym")
 	}
 	symbol, ok := resp[1].(string)
 	if !ok {
-		return response, fmt.Errorf("%v GetV2FundingInfo: %w for symbol", b.Name, errTypeAssert)
+		return response, common.GetTypeAssertError("string", resp[1], "FundingInfo.Symbol")
 	}
-	fundingData, ok := resp[2].([]interface{})
+	fundingData, ok := resp[2].([]any)
 	if !ok {
-		return response, fmt.Errorf("%v GetV2FundingInfo: %w for fundingData", b.Name, errTypeAssert)
+		return response, common.GetTypeAssertError("[]any", resp[2], "FundingInfo.FundingRateOrDuration")
 	}
 	response.Sym = sym
 	response.Symbol = symbol
@@ -353,27 +355,27 @@ func (b *Bitfinex) GetAccountInfoV2(ctx context.Context) (AccountV2Data, error) 
 	var tempString string
 	var tempFloat float64
 	if tempFloat, ok = data[0].(float64); !ok {
-		return resp, fmt.Errorf("%v GetAccountInfoV2: %w for id", b.Name, errTypeAssert)
+		return resp, common.GetTypeAssertError("float64", data[0], "AccountInfo.AccountID")
 	}
 	resp.ID = int64(tempFloat)
 	if tempString, ok = data[1].(string); !ok {
-		return resp, fmt.Errorf("%v GetAccountInfoV2: %w for email", b.Name, errTypeAssert)
+		return resp, common.GetTypeAssertError("string", data[1], "AccountInfo.AccountEmail")
 	}
 	resp.Email = tempString
 	if tempString, ok = data[2].(string); !ok {
-		return resp, fmt.Errorf("%v GetAccountInfoV2: %w for username", b.Name, errTypeAssert)
+		return resp, common.GetTypeAssertError("string", data[2], "AccountInfo.AccountUsername")
 	}
 	resp.Username = tempString
 	if tempFloat, ok = data[3].(float64); !ok {
-		return resp, fmt.Errorf("%v GetAccountInfoV2: %w for accountcreate", b.Name, errTypeAssert)
+		return resp, common.GetTypeAssertError("float64", data[3], "AccountInfo.Account.MTSAccountCreate")
 	}
 	resp.MTSAccountCreate = int64(tempFloat)
 	if tempFloat, ok = data[4].(float64); !ok {
-		return resp, fmt.Errorf("%v GetAccountInfoV2: %w failed for verified", b.Name, errTypeAssert)
+		return resp, common.GetTypeAssertError("float64", data[4], "AccountInfo.AccountVerified")
 	}
 	resp.Verified = int64(tempFloat)
 	if tempString, ok = data[7].(string); !ok {
-		return resp, fmt.Errorf("%v GetAccountInfoV2: %w for timezone", b.Name, errTypeAssert)
+		return resp, common.GetTypeAssertError("string", data[7], "AccountInfo.AccountTimezone")
 	}
 	resp.Timezone = tempString
 	return resp, nil
@@ -393,36 +395,85 @@ func (b *Bitfinex) GetV2Balances(ctx context.Context) ([]WalletDataV2, error) {
 	}
 	resp := make([]WalletDataV2, len(data))
 	for x := range data {
-		wType, ok := data[x][0].(string)
+		walletType, ok := data[x][0].(string)
 		if !ok {
-			return resp, fmt.Errorf("%v GetV2Balances: %w for walletType", b.Name, errTypeAssert)
+			return resp, common.GetTypeAssertError("string", data[x][0], "Wallets.WalletType")
 		}
-		curr, ok := data[x][1].(string)
+		currency, ok := data[x][1].(string)
 		if !ok {
-			return resp, fmt.Errorf("%v GetV2Balances: %w for currency", b.Name, errTypeAssert)
+			return resp, common.GetTypeAssertError("string", data[x][1], "Wallets.Currency")
 		}
-		bal, ok := data[x][2].(float64)
+		balance, ok := data[x][2].(float64)
 		if !ok {
-			return resp, fmt.Errorf("%v GetV2Balances: %w for balance", b.Name, errTypeAssert)
+			return resp, common.GetTypeAssertError("float64", data[x][2], "Wallets.WalletBalance")
 		}
 		unsettledInterest, ok := data[x][3].(float64)
 		if !ok {
-			return resp, fmt.Errorf("%v GetV2Balances: %w for unsettledInterest", b.Name, errTypeAssert)
+			return resp, common.GetTypeAssertError("float64", data[x][3], "Wallets.UnsettledInterest")
 		}
 		resp[x] = WalletDataV2{
-			WalletType:        wType,
-			Currency:          curr,
-			Balance:           bal,
+			WalletType:        walletType,
+			Currency:          currency,
+			Balance:           balance,
 			UnsettledInterest: unsettledInterest,
 		}
 	}
 	return resp, nil
 }
 
-// GetMarginPairs gets pairs that allow margin trading
-func (b *Bitfinex) GetMarginPairs(ctx context.Context) ([]string, error) {
+// GetPairs gets pairs for different assets
+func (b *Bitfinex) GetPairs(ctx context.Context, a asset.Item) ([]string, error) {
+	switch a {
+	case asset.Spot:
+		list, err := b.GetSiteListConfigData(ctx, bitfinexSpotPairs)
+		if err != nil {
+			return nil, err
+		}
+		filter, err := b.GetSiteListConfigData(ctx, bitfinexSecuritiesPairs)
+		if err != nil {
+			return nil, err
+		}
+		filtered := make([]string, 0, len(list))
+		for x := range list {
+			if slices.Contains(filter, list[x]) {
+				continue
+			}
+			filtered = append(filtered, list[x])
+		}
+		return filtered, nil
+	case asset.Margin:
+		return b.GetSiteListConfigData(ctx, bitfinexMarginPairs)
+	case asset.Futures:
+		return b.GetSiteListConfigData(ctx, bitfinexFuturesPairs)
+	case asset.MarginFunding:
+		funding, err := b.GetTickerBatch(ctx)
+		if err != nil {
+			return nil, err
+		}
+		var pairs []string
+		for key := range funding {
+			symbol := key[1:]
+			if key[0] != 'f' || strings.Contains(symbol, ":") || len(symbol) > 6 {
+				continue
+			}
+			pairs = append(pairs, symbol)
+		}
+		return pairs, nil
+	default:
+		return nil, fmt.Errorf("%v GetPairs: %v %w", b.Name, a, asset.ErrNotSupported)
+	}
+}
+
+// GetSiteListConfigData returns site configuration data by pub:list:{Object}:{Detail}
+// string sets.
+// NOTE: See https://docs.bitfinex.com/reference/rest-public-conf
+func (b *Bitfinex) GetSiteListConfigData(ctx context.Context, set string) ([]string, error) {
+	if set == "" {
+		return nil, errSetCannotBeEmpty
+	}
+
 	var resp [][]string
-	path := bitfinexAPIVersion2 + bitfinexMarginPairs
+	path := bitfinexAPIVersion2 + set
 	err := b.SendHTTPRequest(ctx, exchange.RestSpot, path, &resp, status)
 	if err != nil {
 		return nil, err
@@ -431,6 +482,72 @@ func (b *Bitfinex) GetMarginPairs(ctx context.Context) ([]string, error) {
 		return nil, errors.New("invalid response")
 	}
 	return resp[0], nil
+}
+
+// GetSiteInfoConfigData returns site configuration data by pub:info:{AssetType} as a map
+// path should be bitfinexInfoPairs or bitfinexInfoPairsFuture???
+// NOTE: See https://docs.bitfinex.com/reference/rest-public-conf
+func (b *Bitfinex) GetSiteInfoConfigData(ctx context.Context, assetType asset.Item) ([]order.MinMaxLevel, error) {
+	var path string
+	switch assetType {
+	case asset.Spot:
+		path = bitfinexInfoPairs
+	case asset.Futures:
+		path = bitfinexInfoFuturePairs
+	default:
+		return nil, fmt.Errorf("invalid asset type for GetSiteInfoConfigData: %s", assetType)
+	}
+	url := bitfinexAPIVersion2 + path
+	var resp [][][]any
+
+	err := b.SendHTTPRequest(ctx, exchange.RestSpot, url, &resp, status)
+	if err != nil {
+		return nil, err
+	}
+	if len(resp) != 1 {
+		return nil, errors.New("response did not contain only one item")
+	}
+	data := resp[0]
+	pairs := make([]order.MinMaxLevel, 0, len(data))
+	for i := range data {
+		if len(data[i]) != 2 {
+			return nil, errors.New("response contained a tuple without exactly 2 items")
+		}
+		pairSymbol, ok := data[i][0].(string)
+		if !ok {
+			return nil, fmt.Errorf("could not convert first item in SiteInfoConfigData to string: Type is %T", data[i][0])
+		}
+		if strings.Contains(pairSymbol, "TEST") {
+			continue
+		}
+		// SIC: Array type really is any. It contains nils and strings
+		info, ok := data[i][1].([]any)
+		if !ok {
+			return nil, fmt.Errorf("could not convert second item in SiteInfoConfigData to []any; Type is %T", data[i][1])
+		}
+		if len(info) < 5 {
+			return nil, errors.New("response contained order info with less than 5 elements")
+		}
+		minOrder, err := convert.FloatFromString(info[3])
+		if err != nil {
+			return nil, fmt.Errorf("could not convert MinOrderAmount: %s", err)
+		}
+		maxOrder, err := convert.FloatFromString(info[4])
+		if err != nil {
+			return nil, fmt.Errorf("could not convert MaxOrderAmount: %s", err)
+		}
+		pair, err := currency.NewPairFromString(pairSymbol)
+		if err != nil {
+			return nil, err
+		}
+		pairs = append(pairs, order.MinMaxLevel{
+			Asset:             assetType,
+			Pair:              pair,
+			MinimumBaseAmount: minOrder,
+			MaximumBaseAmount: maxOrder,
+		})
+	}
+	return pairs, nil
 }
 
 // GetDerivativeStatusInfo gets status data for the queried derivative
@@ -465,47 +582,43 @@ func (b *Bitfinex) GetDerivativeStatusInfo(ctx context.Context, keys, startTime,
 		var response DerivativeDataResponse
 		var ok bool
 		if response.Key, ok = result[z][0].(string); !ok {
-			return finalResp, fmt.Errorf("%v GetDerivativeStatusInfo: %w for Key", b.Name, errTypeAssert)
+			return finalResp, common.GetTypeAssertError("string", result[z][0], "DerivativesStatus.Key")
 		}
 		if response.MTS, ok = result[z][1].(float64); !ok {
-			return finalResp, fmt.Errorf("%v GetDerivativeStatusInfo: %w for MTS", b.Name, errTypeAssert)
+			return finalResp, common.GetTypeAssertError("float64", result[z][1], "DerivativesStatus.MTS")
 		}
 		if response.DerivPrice, ok = result[z][3].(float64); !ok {
-			return finalResp, fmt.Errorf("%v GetDerivativeStatusInfo: %w for DerivPrice", b.Name, errTypeAssert)
+			return finalResp, common.GetTypeAssertError("float64", result[z][3], "DerivativesStatus.DerivPrice")
 		}
 		if response.SpotPrice, ok = result[z][4].(float64); !ok {
-			return finalResp, fmt.Errorf("%v GetDerivativeStatusInfo: %w for SpotPrice", b.Name, errTypeAssert)
+			return finalResp, common.GetTypeAssertError("float64", result[z][4], "DerivativesStatus.SpotPrice")
 		}
 		if response.InsuranceFundBalance, ok = result[z][6].(float64); !ok {
-			return finalResp, fmt.Errorf("%v GetDerivativeStatusInfo: %w for Insurance fund balance", b.Name, errTypeAssert)
+			return finalResp, common.GetTypeAssertError("float64", result[z][6], "DerivativesStatus.InsuranceFundBalance")
 		}
 		if response.NextFundingEventTS, ok = result[z][8].(float64); !ok {
-			return finalResp, fmt.Errorf("%v GetDerivativeStatusInfo: %w for NextFundingEventTS", b.Name, errTypeAssert)
+			return finalResp, common.GetTypeAssertError("float64", result[z][8], "DerivativesStatus.NextFundingEventMTS")
 		}
 		if response.NextFundingAccrued, ok = result[z][9].(float64); !ok {
-			return finalResp, fmt.Errorf("%v GetDerivativeStatusInfo: %w for NextFundingAccrued", b.Name, errTypeAssert)
+			return finalResp, common.GetTypeAssertError("float64", result[z][9], "DerivativesStatus.NextFundingAccrued")
 		}
 		if response.NextFundingStep, ok = result[z][10].(float64); !ok {
-			return finalResp, fmt.Errorf("%v GetDerivativeStatusInfo: %w for NextFundingStep", b.Name, errTypeAssert)
+			return finalResp, common.GetTypeAssertError("float64", result[z][10], "DerivativesStatus.NextFundingStep")
 		}
 		if response.CurrentFunding, ok = result[z][12].(float64); !ok {
-			return finalResp, fmt.Errorf("%v GetDerivativeStatusInfo: %w for CurrentFunding", b.Name, errTypeAssert)
+			return finalResp, common.GetTypeAssertError("float64", result[z][12], "DerivativesStatus.CurrentFunding")
 		}
 		if response.MarkPrice, ok = result[z][15].(float64); !ok {
-			return finalResp, fmt.Errorf("%v GetDerivativeStatusInfo: %w for MarkPrice", b.Name, errTypeAssert)
+			return finalResp, common.GetTypeAssertError("float64", result[z][15], "DerivativesStatus.MarkPrice")
 		}
 
 		switch t := result[z][18].(type) {
 		case float64:
 			response.OpenInterest = t
 		case nil:
-			break // OpenInterest will default to 0
+			break // SupportedCapability will default to 0
 		default:
-			return finalResp, fmt.Errorf("%v GetDerivativeStatusInfo: %w for OpenInterest. Type received: %v",
-				b.Name,
-				errTypeAssert,
-				t,
-			)
+			return finalResp, common.GetTypeAssertError(" float64|nil", t, "DerivativesStatus.SupportedCapability")
 		}
 		finalResp[z] = response
 	}
@@ -513,8 +626,8 @@ func (b *Bitfinex) GetDerivativeStatusInfo(ctx context.Context, keys, startTime,
 }
 
 // GetTickerBatch returns all supported ticker information
-func (b *Bitfinex) GetTickerBatch(ctx context.Context) (map[string]Ticker, error) {
-	var response [][]interface{}
+func (b *Bitfinex) GetTickerBatch(ctx context.Context) (map[string]*Ticker, error) {
+	var response [][]any
 
 	path := bitfinexAPIVersion2 + bitfinexTickerBatch +
 		"?symbols=ALL"
@@ -524,106 +637,29 @@ func (b *Bitfinex) GetTickerBatch(ctx context.Context) (map[string]Ticker, error
 		return nil, err
 	}
 
-	var tickers = make(map[string]Ticker)
-	for x := range response {
-		symbol, ok := response[x][0].(string)
+	var tickErrs error
+	var tickers = make(map[string]*Ticker)
+	for _, tickResp := range response {
+		symbol, ok := tickResp[0].(string)
 		if !ok {
-			return nil, errors.New("unable to type assert symbol")
-		}
-
-		var t Ticker
-		if len(response[x]) > 11 {
-			if t.FlashReturnRate, ok = response[x][1].(float64); !ok {
-				return nil, errors.New("unable to type assert flashReturnRate")
-			}
-			if t.Bid, ok = response[x][2].(float64); !ok {
-				return nil, errors.New("unable to type assert bid")
-			}
-			var bidPeriod float64
-			bidPeriod, ok = response[x][3].(float64)
-			if !ok {
-				return nil, errors.New("unable to type assert bidPeriod")
-			}
-			t.BidPeriod = int64(bidPeriod)
-			if t.BidSize, ok = response[x][4].(float64); !ok {
-				return nil, errors.New("unable to type assert bidSize")
-			}
-			if t.Ask, ok = response[x][5].(float64); !ok {
-				return nil, errors.New("unable to type assert ask")
-			}
-			var askPeriod float64
-			askPeriod, ok = response[x][6].(float64)
-			if !ok {
-				return nil, errors.New("unable to type assert askPeriod")
-			}
-			t.AskPeriod = int64(askPeriod)
-			if t.AskSize, ok = response[x][7].(float64); !ok {
-				return nil, errors.New("unable to type assert askSize")
-			}
-			if t.DailyChange, ok = response[x][8].(float64); !ok {
-				return nil, errors.New("unable to type assert dailyChange")
-			}
-			if t.DailyChangePerc, ok = response[x][9].(float64); !ok {
-				return nil, errors.New("unable to type assert dailyChangePerc")
-			}
-			if t.Last, ok = response[x][10].(float64); !ok {
-				return nil, errors.New("unable to type assert last")
-			}
-			if t.Volume, ok = response[x][11].(float64); !ok {
-				return nil, errors.New("unable to type assert volume")
-			}
-			if t.High, ok = response[x][12].(float64); !ok {
-				return nil, errors.New("unable to type assert high")
-			}
-			if t.Low, ok = response[x][13].(float64); !ok {
-				return nil, errors.New("unable to type assert low")
-			}
-			if t.FFRAmountAvailable, ok = response[x][16].(float64); !ok {
-				return nil, errors.New("unable to type assert FFRAmountAvailable")
-			}
-
-			tickers[symbol] = t
+			tickErrs = common.AppendError(tickErrs, fmt.Errorf("%w: %v", errTickerInvalidSymbol, symbol))
 			continue
 		}
-
-		if t.Bid, ok = response[x][1].(float64); !ok {
-			return nil, errors.New("unable to type assert bid")
+		if t, err := tickerFromResp(symbol, tickResp[1:]); err != nil {
+			// We get too frequent intermittent formatting errors from tALT2612:USD to treat them as errors
+			if !errors.Is(err, errTickerInvalidResp) {
+				tickErrs = common.AppendError(tickErrs, err)
+			}
+		} else {
+			tickers[symbol] = t
 		}
-		if t.BidSize, ok = response[x][2].(float64); !ok {
-			return nil, errors.New("unable to type assert bid size")
-		}
-		if t.Ask, ok = response[x][3].(float64); !ok {
-			return nil, errors.New("unable to type assert ask")
-		}
-		if t.AskSize, ok = response[x][4].(float64); !ok {
-			return nil, errors.New("unable to type assert ask size")
-		}
-		if t.DailyChange, ok = response[x][5].(float64); !ok {
-			return nil, errors.New("unable to type assert daily change")
-		}
-		if t.DailyChangePerc, ok = response[x][6].(float64); !ok {
-			return nil, errors.New("unable to type assert daily change perc")
-		}
-		if t.Last, ok = response[x][7].(float64); !ok {
-			return nil, errors.New("unable to type assert last")
-		}
-		if t.Volume, ok = response[x][8].(float64); !ok {
-			return nil, errors.New("unable to type assert volume")
-		}
-		if t.High, ok = response[x][9].(float64); !ok {
-			return nil, errors.New("unable to type assert high")
-		}
-		if t.Low, ok = response[x][10].(float64); !ok {
-			return nil, errors.New("unable to type assert low")
-		}
-		tickers[symbol] = t
 	}
-	return tickers, nil
+	return tickers, tickErrs
 }
 
 // GetTicker returns ticker information for one symbol
 func (b *Bitfinex) GetTicker(ctx context.Context, symbol string) (*Ticker, error) {
-	var response []interface{}
+	var response []any
 
 	path := bitfinexAPIVersion2 + bitfinexTicker + symbol
 
@@ -632,92 +668,77 @@ func (b *Bitfinex) GetTicker(ctx context.Context, symbol string) (*Ticker, error
 		return nil, err
 	}
 
-	var t Ticker
-	if len(response) > 10 {
-		var ok bool
-		if t.FlashReturnRate, ok = response[0].(float64); !ok {
-			return nil, errors.New("unable to type assert flashReturnRate")
-		}
-		if t.Bid, ok = response[1].(float64); !ok {
-			return nil, errors.New("unable to type assert bid")
-		}
-		var bidPeriod float64
-		bidPeriod, ok = response[2].(float64)
-		if !ok {
-			return nil, errors.New("unable to type assert bidPeriod")
-		}
-		t.BidPeriod = int64(bidPeriod)
-		if t.BidSize, ok = response[3].(float64); !ok {
-			return nil, errors.New("unable to type assert bidSize")
-		}
-		if t.Ask, ok = response[4].(float64); !ok {
-			return nil, errors.New("unable to type assert ask")
-		}
-		var askPeriod float64
-		askPeriod, ok = response[5].(float64)
-		if !ok {
-			return nil, errors.New("unable to type assert askPeriod")
-		}
-		t.AskPeriod = int64(askPeriod)
-		if t.AskSize, ok = response[6].(float64); !ok {
-			return nil, errors.New("unable to type assert askSize")
-		}
-		if t.DailyChange, ok = response[7].(float64); !ok {
-			return nil, errors.New("unable to type assert dailyChange")
-		}
-		if t.DailyChangePerc, ok = response[8].(float64); !ok {
-			return nil, errors.New("unable to type assert dailyChangePerc")
-		}
-		if t.Last, ok = response[9].(float64); !ok {
-			return nil, errors.New("unable to type assert last")
-		}
-		if t.Volume, ok = response[10].(float64); !ok {
-			return nil, errors.New("unable to type assert volume")
-		}
-		if t.High, ok = response[11].(float64); !ok {
-			return nil, errors.New("unable to type assert high")
-		}
-		if t.Low, ok = response[12].(float64); !ok {
-			return nil, errors.New("unable to type assert low")
-		}
-		if t.FFRAmountAvailable, ok = response[15].(float64); !ok {
-			return nil, errors.New("unable to type assert FFRAmountAvailable")
-		}
-		return &t, nil
+	t, err := tickerFromResp(symbol, response)
+	if err != nil {
+		return nil, err
 	}
+	return t, nil
+}
 
-	var ok bool
-	if t.Bid, ok = response[0].(float64); !ok {
-		return nil, errors.New("unable to type assert bid")
+var tickerFields = []string{"Bid", "BidSize", "Ask", "AskSize", "DailyChange", "DailyChangePercentage", "LastPrice", "DailyVolume", "DailyHigh", "DailyLow"}
+
+func tickerFromResp(symbol string, respAny []any) (*Ticker, error) {
+	if strings.HasPrefix(symbol, "f") {
+		return tickerFromFundingResp(symbol, respAny)
 	}
-	if t.BidSize, ok = response[1].(float64); !ok {
-		return nil, errors.New("unable to type assert bidSize")
+	if len(respAny) != 10 {
+		return nil, fmt.Errorf("%w for %s: %v", errTickerInvalidFieldCount, symbol, respAny)
 	}
-	if t.Ask, ok = response[2].(float64); !ok {
-		return nil, errors.New("unable to type assert ask")
+	resp := make([]float64, 10)
+	for i := range respAny {
+		f, ok := respAny[i].(float64)
+		if !ok {
+			return nil, fmt.Errorf("%w for %s field %s from %v", errTickerInvalidResp, symbol, tickerFields[i], respAny)
+		}
+		resp[i] = f
 	}
-	if t.AskSize, ok = response[3].(float64); !ok {
-		return nil, errors.New("unable to type assert askSize")
+	return &Ticker{
+		Bid:             resp[0],
+		BidSize:         resp[1],
+		Ask:             resp[2],
+		AskSize:         resp[3],
+		DailyChange:     resp[4],
+		DailyChangePerc: resp[5],
+		Last:            resp[6],
+		Volume:          resp[7],
+		High:            resp[8],
+		Low:             resp[9],
+	}, nil
+}
+
+var fundingTickerFields = []string{"FlashReturnRate", "Bid", "BidPeriod", "BidSize", "Ask", "AskPeriod", "AskSize", "DailyChange", "DailyChangePercentage", "LastPrice", "DailyVolume", "DailyHigh", "DailyLow", "", "", "FFRAmountAvailable"}
+
+func tickerFromFundingResp(symbol string, respAny []any) (*Ticker, error) {
+	if len(respAny) != 16 {
+		return nil, fmt.Errorf("%w for %s: %v", errTickerInvalidFieldCount, symbol, respAny)
 	}
-	if t.DailyChange, ok = response[4].(float64); !ok {
-		return nil, errors.New("unable to type assert dailyChange")
+	resp := make([]float64, 16)
+	for i := range respAny {
+		if fundingTickerFields[i] == "" { // Unused nil fields
+			continue
+		}
+		f, ok := respAny[i].(float64)
+		if !ok {
+			return nil, fmt.Errorf("%w for %s field %s from %v", errTickerInvalidResp, symbol, fundingTickerFields[i], respAny)
+		}
+		resp[i] = f
 	}
-	if t.DailyChangePerc, ok = response[5].(float64); !ok {
-		return nil, errors.New("unable to type assert dailyChangePerc")
-	}
-	if t.Last, ok = response[6].(float64); !ok {
-		return nil, errors.New("unable to type assert last")
-	}
-	if t.Volume, ok = response[7].(float64); !ok {
-		return nil, errors.New("unable to type assert volume")
-	}
-	if t.High, ok = response[8].(float64); !ok {
-		return nil, errors.New("unable to type assert high")
-	}
-	if t.Low, ok = response[9].(float64); !ok {
-		return nil, errors.New("unable to type assert low")
-	}
-	return &t, nil
+	return &Ticker{
+		FlashReturnRate:    resp[0],
+		Bid:                resp[1],
+		BidPeriod:          int64(resp[2]),
+		BidSize:            resp[3],
+		Ask:                resp[4],
+		AskPeriod:          int64(resp[5]),
+		AskSize:            resp[6],
+		DailyChange:        resp[7],
+		DailyChangePerc:    resp[8],
+		Last:               resp[9],
+		Volume:             resp[10],
+		High:               resp[11],
+		Low:                resp[12],
+		FFRAmountAvailable: resp[15],
+	}, nil
 }
 
 // GetTrades gets historic trades that occurred on the exchange
@@ -813,7 +834,7 @@ func (b *Bitfinex) GetTrades(ctx context.Context, currencyPair string, limit, ti
 	return history, nil
 }
 
-// GetOrderbook retieves the orderbook bid and ask price points for a currency
+// GetOrderbook retrieves the orderbook bid and ask price points for a currency
 // pair - By default the response will return 25 bid and 25 ask price points.
 // symbol - Example "tBTCUSD"
 // precision - P0,P1,P2,P3,R0
@@ -971,8 +992,7 @@ func (b *Bitfinex) GetLends(ctx context.Context, symbol string, values url.Value
 }
 
 // GetCandles returns candle chart data
-// timeFrame values: '1m', '5m', '15m', '30m', '1h', '3h', '6h', '12h', '1D',
-// '7D', '14D', '1M'
+// timeFrame values: '1m', '5m', '15m', '30m', '1h', '3h', '6h', '12h', '1D', '1W', '14D', '1M'
 // section values: last or hist
 func (b *Bitfinex) GetCandles(ctx context.Context, symbol, timeFrame string, start, end int64, limit uint32, historic bool) ([]Candle, error) {
 	var fundingPeriod string
@@ -1079,7 +1099,7 @@ func (b *Bitfinex) GetCandles(ctx context.Context, symbol, timeFrame string, sta
 	return []Candle{c}, nil
 }
 
-// GetConfigurations fetchs currency and symbol site configuration data.
+// GetConfigurations fetches currency and symbol site configuration data.
 func (b *Bitfinex) GetConfigurations() error {
 	return common.ErrNotYetImplemented
 }
@@ -1241,7 +1261,7 @@ func (b *Bitfinex) GetAccountSummary(ctx context.Context) (AccountSummary, error
 func (b *Bitfinex) NewDeposit(ctx context.Context, method, walletName string, renew uint8) (*Deposit, error) {
 	if walletName == "" {
 		walletName = "funding"
-	} else if !common.StringDataCompare(AcceptedWalletNames, walletName) {
+	} else if !slices.Contains(AcceptedWalletNames, walletName) {
 		return nil,
 			fmt.Errorf("walletname: [%s] is not allowed, supported: %s",
 				walletName,
@@ -1442,7 +1462,7 @@ func (b *Bitfinex) WithdrawFIAT(ctx context.Context, withdrawalType, walletType 
 // NewOrder submits a new order and returns a order information
 // Major Upgrade needed on this function to include all query params
 func (b *Bitfinex) NewOrder(ctx context.Context, currencyPair, orderType string, amount, price float64, buy, hidden bool) (Order, error) {
-	if !common.StringDataCompare(AcceptedOrderType, orderType) {
+	if !slices.Contains(AcceptedOrderType, orderType) {
 		return Order{}, fmt.Errorf("order type %s not accepted", orderType)
 	}
 
@@ -1460,6 +1480,32 @@ func (b *Bitfinex) NewOrder(ctx context.Context, currencyPair, orderType string,
 
 	return response, b.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, http.MethodPost,
 		bitfinexOrderNew,
+		req,
+		&response,
+		orderV1)
+}
+
+// OrderUpdate will send an update signal for an existing order
+// and attempt to modify it
+func (b *Bitfinex) OrderUpdate(ctx context.Context, orderID, groupID, clientOrderID string, amount, price, leverage float64) (*Order, error) {
+	req := make(map[string]interface{})
+	if orderID != "" {
+		req["id"] = orderID
+	}
+	if groupID != "" {
+		req["gid"] = groupID
+	}
+	if clientOrderID != "" {
+		req["cid"] = clientOrderID
+	}
+	req["price"] = strconv.FormatFloat(price, 'f', -1, 64)
+	req["amount"] = strconv.FormatFloat(amount, 'f', -1, 64)
+	if leverage > 1 {
+		req["lev"] = strconv.FormatFloat(leverage, 'f', -1, 64)
+	}
+	response := Order{}
+	return &response, b.SendAuthenticatedHTTPRequestV2(ctx, exchange.RestSpot, http.MethodPost,
+		bitfinexOrderUpdate,
 		req,
 		&response,
 		orderV1)
@@ -1496,12 +1542,157 @@ func (b *Bitfinex) CancelMultipleOrders(ctx context.Context, orderIDs []int64) (
 	response := GenericResponse{}
 	req := make(map[string]interface{})
 	req["order_ids"] = orderIDs
-
 	return response.Result, b.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, http.MethodPost,
 		bitfinexOrderCancelMulti,
 		req,
 		nil,
 		orderMulti)
+}
+
+// CancelMultipleOrdersV2 cancels multiple orders
+func (b *Bitfinex) CancelMultipleOrdersV2(ctx context.Context, orderID, clientOrderID, groupOrderID int64, clientOrderIDDate time.Time, allOrders bool) ([]CancelMultiOrderResponse, error) {
+	var response []interface{}
+	req := make(map[string]interface{})
+	if orderID > 0 {
+		req["id"] = orderID
+	}
+	if clientOrderID > 0 {
+		req["cid"] = clientOrderID
+	}
+	if !clientOrderIDDate.IsZero() {
+		req["cid_date"] = clientOrderIDDate.Format("2006-01-02")
+	}
+	if groupOrderID > 0 {
+		req["gid"] = groupOrderID
+	}
+	if allOrders {
+		req["all"] = 1
+	}
+
+	err := b.SendAuthenticatedHTTPRequestV2(ctx, exchange.RestSpot, http.MethodPost,
+		bitfinexOrderCancelMulti,
+		req,
+		&response,
+		orderMulti)
+	if err != nil {
+		return nil, err
+	}
+	var cancelledOrders []CancelMultiOrderResponse
+	for x := range response {
+		cancelledOrdersSlice, ok := response[x].([]interface{})
+		if !ok {
+			continue
+		}
+		for y := range cancelledOrdersSlice {
+			cancelledOrderFields, ok := cancelledOrdersSlice[y].([]interface{})
+			if !ok {
+				continue
+			}
+			var cancelledOrder CancelMultiOrderResponse
+			for z := range cancelledOrderFields {
+				switch z {
+				case 0:
+					f, ok := cancelledOrderFields[z].(float64)
+					if !ok {
+						return nil, common.GetTypeAssertError("float64", cancelledOrderFields[z], "CancelOrders.OrderID")
+					}
+					cancelledOrder.OrderID = strconv.FormatFloat(f, 'f', -1, 64)
+				case 1:
+					f, ok := cancelledOrderFields[z].(float64)
+					if !ok {
+						return nil, common.GetTypeAssertError("float64", cancelledOrderFields[z], "CancelOrders.GroupOrderID")
+					}
+					cancelledOrder.GroupOrderID = strconv.FormatFloat(f, 'f', -1, 64)
+				case 2:
+					f, ok := cancelledOrderFields[z].(float64)
+					if !ok {
+						return nil, common.GetTypeAssertError("float64", cancelledOrderFields[z], "CancelOrders.ClientOrderID")
+					}
+					cancelledOrder.ClientOrderID = strconv.FormatFloat(f, 'f', -1, 64)
+				case 3:
+					f, ok := cancelledOrderFields[z].(string)
+					if !ok {
+						return nil, common.GetTypeAssertError("string", cancelledOrderFields[z], "CancelOrders.Symbol")
+					}
+					cancelledOrder.Symbol = f
+				case 4:
+					f, ok := cancelledOrderFields[z].(float64)
+					if !ok {
+						return nil, common.GetTypeAssertError("float64", cancelledOrderFields[z], "CancelOrders.MTSOfCreation")
+					}
+					cancelledOrder.CreatedTime = time.UnixMilli(int64(f))
+				case 5:
+					f, ok := cancelledOrderFields[z].(float64)
+					if !ok {
+						return nil, common.GetTypeAssertError("float64", cancelledOrderFields[z], "CancelOrders.MTSOfLastUpdate")
+					}
+					cancelledOrder.UpdatedTime = time.UnixMilli(int64(f))
+				case 6:
+					f, ok := cancelledOrderFields[z].(float64)
+					if !ok {
+						return nil, common.GetTypeAssertError("float64", cancelledOrderFields[z], "CancelOrders.Amount")
+					}
+					cancelledOrder.Amount = f
+				case 7:
+					f, ok := cancelledOrderFields[z].(float64)
+					if !ok {
+						return nil, common.GetTypeAssertError("float64", cancelledOrderFields[z], "CancelOrders.OriginalAmount")
+					}
+					cancelledOrder.OriginalAmount = f
+				case 8:
+					f, ok := cancelledOrderFields[z].(string)
+					if !ok {
+						return nil, common.GetTypeAssertError("string", cancelledOrderFields[z], "CancelOrders.OrderType")
+					}
+					cancelledOrder.OrderType = f
+				case 9:
+					f, ok := cancelledOrderFields[z].(string)
+					if !ok {
+						return nil, common.GetTypeAssertError("string", cancelledOrderFields[z], "CancelOrders.PreviousOrderType")
+					}
+					cancelledOrder.OriginalOrderType = f
+				case 12:
+					f, ok := cancelledOrderFields[z].(string)
+					if !ok {
+						return nil, common.GetTypeAssertError("string", cancelledOrderFields[z], "CancelOrders.SumOfOrderFlags")
+					}
+					cancelledOrder.OrderFlags = f
+				case 13:
+					f, ok := cancelledOrderFields[z].(string)
+					if !ok {
+						return nil, common.GetTypeAssertError("string", cancelledOrderFields[z], "CancelOrders.OrderStatuses")
+					}
+					cancelledOrder.OrderStatus = f
+				case 16:
+					f, ok := cancelledOrderFields[z].(float64)
+					if !ok {
+						return nil, common.GetTypeAssertError("float64", cancelledOrderFields[z], "CancelOrders.Price")
+					}
+					cancelledOrder.Price = f
+				case 17:
+					f, ok := cancelledOrderFields[z].(float64)
+					if !ok {
+						return nil, common.GetTypeAssertError("float64", cancelledOrderFields[z], "CancelOrders.AveragePrice")
+					}
+					cancelledOrder.AveragePrice = f
+				case 18:
+					f, ok := cancelledOrderFields[z].(float64)
+					if !ok {
+						return nil, common.GetTypeAssertError("float64", cancelledOrderFields[z], "CancelOrders.TrailingPrice")
+					}
+					cancelledOrder.TrailingPrice = f
+				case 19:
+					f, ok := cancelledOrderFields[z].(float64)
+					if !ok {
+						return nil, common.GetTypeAssertError("float64", cancelledOrderFields[z], "CancelOrders.AuxiliaryLimitPrice")
+					}
+					cancelledOrder.AuxLimitPrice = f
+				}
+			}
+			cancelledOrders = append(cancelledOrders, cancelledOrder)
+		}
+	}
+	return cancelledOrders, nil
 }
 
 // CancelAllExistingOrders cancels all active and open orders
@@ -1554,24 +1745,33 @@ func (b *Bitfinex) GetOrderStatus(ctx context.Context, orderID int64) (Order, er
 }
 
 // GetInactiveOrders returns order status information
-func (b *Bitfinex) GetInactiveOrders(ctx context.Context) ([]Order, error) {
+func (b *Bitfinex) GetInactiveOrders(ctx context.Context, symbol string, ids ...int64) ([]Order, error) {
 	var response []Order
 	req := make(map[string]interface{})
-	req["limit"] = "100"
-
-	return response, b.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, http.MethodPost,
-		bitfinexInactiveOrders,
+	req["limit"] = 2500
+	if len(ids) > 0 {
+		req["ids"] = ids
+	}
+	return response, b.SendAuthenticatedHTTPRequestV2(
+		ctx,
+		exchange.RestSpot,
+		http.MethodPost,
+		bitfinexV2Auth+"r/"+bitfinexOrders+"/"+symbol+"/"+bitfinexInactiveOrders,
 		req,
 		&response,
 		orderMulti)
 }
 
 // GetOpenOrders returns all active orders and statuses
-func (b *Bitfinex) GetOpenOrders(ctx context.Context) ([]Order, error) {
+func (b *Bitfinex) GetOpenOrders(ctx context.Context, ids ...int64) ([]Order, error) {
 	var response []Order
+	req := make(map[string]interface{})
+	if len(ids) > 0 {
+		req["ids"] = ids
+	}
 	return response, b.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, http.MethodPost,
 		bitfinexOrders,
-		nil,
+		req,
 		&response,
 		orderMulti)
 }
@@ -1615,7 +1815,7 @@ func (b *Bitfinex) GetBalanceHistory(ctx context.Context, symbol string, timeSin
 	if limit > 0 {
 		req["limit"] = limit
 	}
-	if len(wallet) > 0 {
+	if wallet != "" {
 		req["wallet"] = wallet
 	}
 
@@ -1628,11 +1828,11 @@ func (b *Bitfinex) GetBalanceHistory(ctx context.Context, symbol string, timeSin
 
 // GetMovementHistory returns an array of past deposits and withdrawals
 func (b *Bitfinex) GetMovementHistory(ctx context.Context, symbol, method string, timeSince, timeUntil time.Time, limit int) ([]MovementHistory, error) {
-	var response []MovementHistory
+	var response [][]interface{}
 	req := make(map[string]interface{})
 	req["currency"] = symbol
 
-	if len(method) > 0 {
+	if method != "" {
 		req["method"] = method
 	}
 	if !timeSince.IsZero() {
@@ -1645,11 +1845,80 @@ func (b *Bitfinex) GetMovementHistory(ctx context.Context, symbol, method string
 		req["limit"] = limit
 	}
 
-	return response, b.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, http.MethodPost,
-		bitfinexHistoryMovements,
+	err := b.SendAuthenticatedHTTPRequestV2(ctx, exchange.RestSpot, http.MethodPost,
+		"auth/r/"+bitfinexHistoryMovements+"/"+symbol+"/"+bitfinexHistoryShort,
 		req,
 		&response,
 		orderMulti)
+	if err != nil {
+		return nil, err
+	}
+	var resp []MovementHistory //nolint:prealloc // its an array in an array
+	var ok bool
+	for i := range response {
+		var move MovementHistory
+		for j := range response[i] {
+			if response[i][j] == nil {
+				continue
+			}
+			switch j {
+			case 0:
+				var id float64
+				id, ok = response[i][j].(float64)
+				if !ok {
+					return nil, common.GetTypeAssertError("float64", response[i][j], "Movements.Id")
+				}
+				move.ID = int64(id)
+			case 1:
+				move.Currency, ok = response[i][j].(string)
+				if !ok {
+					return nil, common.GetTypeAssertError("string", response[i][j], "Movements.Currency")
+				}
+			case 5:
+				move.TimestampCreated, ok = response[i][j].(float64)
+				if !ok {
+					return nil, common.GetTypeAssertError("float64", response[i][j], "Movements.MovementStartedAt")
+				}
+			case 6:
+				move.Timestamp, ok = response[i][j].(float64)
+				if !ok {
+					return nil, common.GetTypeAssertError("float64", response[i][j], "Movements.MovementLastUpdated")
+				}
+			case 9:
+				move.Status, ok = response[i][j].(string)
+				if !ok {
+					return nil, common.GetTypeAssertError("string", response[i][j], "Movements.CurrentStatus")
+				}
+			case 12:
+				move.Amount, ok = response[i][j].(float64)
+				if !ok {
+					return nil, common.GetTypeAssertError("float64", response[i][j], "Movements.AmountOfFundsMoved")
+				}
+			case 13:
+				move.Fee, ok = response[i][j].(float64)
+				if !ok {
+					return nil, common.GetTypeAssertError("float64", response[i][j], "Movements.FeesApplied")
+				}
+			case 16:
+				move.Address, ok = response[i][j].(string)
+				if !ok {
+					return nil, common.GetTypeAssertError("string", response[i][j], "Movements.DestinationAddress")
+				}
+			case 20:
+				move.TxID, ok = response[i][j].(string)
+				if !ok {
+					return nil, common.GetTypeAssertError("string", response[i][j], "Movements.TransactionId")
+				}
+			case 21:
+				move.Description, ok = response[i][j].(string)
+				if !ok {
+					return nil, common.GetTypeAssertError("string", response[i][j], "Movements.WithdrawTransactionNote")
+				}
+			}
+		}
+		resp = append(resp, move)
+	}
+	return resp, nil
 }
 
 // GetTradeHistory returns past executed trades
@@ -1806,10 +2075,10 @@ func (b *Bitfinex) SendHTTPRequest(ctx context.Context, ep exchange.URL, path st
 
 	return b.SendPayload(ctx, e, func() (*request.Item, error) {
 		return item, nil
-	})
+	}, request.UnauthenticatedRequest)
 }
 
-// SendAuthenticatedHTTPRequest sends an autheticated http request and json
+// SendAuthenticatedHTTPRequest sends an authenticated http request and json
 // unmarshals result to a supplied variable
 func (b *Bitfinex) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange.URL, method, path string, params map[string]interface{}, result interface{}, endpoint request.EndpointLimit) error {
 	creds, err := b.GetCredentials(ctx)
@@ -1824,10 +2093,9 @@ func (b *Bitfinex) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange
 
 	fullPath := ePoint + bitfinexAPIVersion + path
 	return b.SendPayload(ctx, endpoint, func() (*request.Item, error) {
-		n := b.Requester.GetNonce(true)
 		req := make(map[string]interface{})
 		req["request"] = bitfinexAPIVersion + path
-		req["nonce"] = n.String()
+		req["nonce"] = b.Requester.GetNonce(nonce.UnixNano).String()
 
 		for key, value := range params {
 			req[key] = value
@@ -1855,15 +2123,14 @@ func (b *Bitfinex) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange
 			Path:          fullPath,
 			Headers:       headers,
 			Result:        result,
-			AuthRequest:   true,
 			NonceEnabled:  true,
 			Verbose:       b.Verbose,
 			HTTPDebugging: b.HTTPDebugging,
 			HTTPRecording: b.HTTPRecording}, nil
-	})
+	}, request.AuthenticatedRequest)
 }
 
-// SendAuthenticatedHTTPRequestV2 sends an autheticated http request and json
+// SendAuthenticatedHTTPRequestV2 sends an authenticated http request and json
 // unmarshals result to a supplied variable
 func (b *Bitfinex) SendAuthenticatedHTTPRequestV2(ctx context.Context, ep exchange.URL, method, path string, params map[string]interface{}, result interface{}, endpoint request.EndpointLimit) error {
 	creds, err := b.GetCredentials(ctx)
@@ -1909,13 +2176,12 @@ func (b *Bitfinex) SendAuthenticatedHTTPRequestV2(ctx context.Context, ep exchan
 			Headers:       headers,
 			Body:          body,
 			Result:        result,
-			AuthRequest:   true,
 			NonceEnabled:  true,
 			Verbose:       b.Verbose,
 			HTTPDebugging: b.HTTPDebugging,
 			HTTPRecording: b.HTTPRecording,
 		}, nil
-	})
+	}, request.AuthenticatedRequest)
 }
 
 // GetFee returns an estimate of fee based on type of transaction
@@ -2035,22 +2301,22 @@ func (b *Bitfinex) PopulateAcceptableMethods(ctx context.Context) error {
 	storeData := make(map[string][]string)
 	for x := range data {
 		if len(data[x]) == 0 {
-			return fmt.Errorf("data should not be empty")
+			return errors.New("data should not be empty")
 		}
 		name, ok := data[x][0].(string)
 		if !ok {
-			return fmt.Errorf("unable to type assert name")
+			return errors.New("unable to type assert name")
 		}
 
 		var availOptions []string
 		options, ok := data[x][1].([]interface{})
 		if !ok {
-			return fmt.Errorf("unable to type assert options")
+			return errors.New("unable to type assert options")
 		}
 		for x := range options {
 			o, ok := options[x].(string)
 			if !ok {
-				return fmt.Errorf("unable to type assert option to string")
+				return errors.New("unable to type assert option to string")
 			}
 			availOptions = append(availOptions, o)
 		}

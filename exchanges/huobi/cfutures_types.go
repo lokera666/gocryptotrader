@@ -372,14 +372,14 @@ type SwapMarketDepthData struct {
 // SwapKlineData stores kline data for perpetual swaps
 type SwapKlineData struct {
 	Data []struct {
-		Volume float64 `json:"vol"`
-		Close  float64 `json:"close"`
-		Count  float64 `json:"count"`
-		High   float64 `json:"high"`
-		ID     int64   `json:"id"`
-		Low    float64 `json:"low"`
-		Open   float64 `json:"open"`
-		Amount float64 `json:"amount"`
+		Volume      float64 `json:"vol"`
+		Close       float64 `json:"close"`
+		Count       float64 `json:"count"`
+		High        float64 `json:"high"`
+		IDTimestamp int64   `json:"id"`
+		Low         float64 `json:"low"`
+		Open        float64 `json:"open"`
+		Amount      float64 `json:"amount"`
 	} `json:"data"`
 }
 
@@ -417,18 +417,18 @@ type LastTradeData struct {
 
 // BatchTradesData stores batch trades for a given swap contract
 type BatchTradesData struct {
-	Channel string `json:"ch"`
-	Data    []struct {
-		ID        int64 `json:"id"`
-		Timestamp int64 `json:"ts"`
-		Data      []struct {
-			Amount    float64 `json:"amount"`
-			Direction string  `json:"direction"`
-			ID        int64   `json:"id"`
-			Price     float64 `json:"price"`
-			Timestamp int64   `json:"ts"`
-		} `json:"data"`
-	} `json:"data"`
+	ID        int64                      `json:"id"`
+	Timestamp int64                      `json:"ts"`
+	Data      []CoinMarginedFuturesTrade `json:"data"`
+}
+
+// CoinMarginedFuturesTrade holds coinmarginedfutures trade data
+type CoinMarginedFuturesTrade struct {
+	Amount    float64 `json:"amount"`
+	Direction string  `json:"direction"`
+	ID        int64   `json:"id"`
+	Price     float64 `json:"price"`
+	Timestamp int64   `json:"ts"`
 }
 
 // InsuranceAndClawbackData stores insurance fund's and clawback rate's data
@@ -530,20 +530,23 @@ type TraderSentimentIndexPositionData struct {
 
 // LiquidationOrdersData stores data of liquidation orders
 type LiquidationOrdersData struct {
-	Data struct {
-		Orders []struct {
-			Symbol       string  `json:"symbol"`
-			ContractCode string  `json:"contract_code"`
-			Direction    string  `json:"buy"`
-			Offset       string  `json:"offset"`
-			Volume       float64 `json:"volume"`
-			Price        float64 `json:"price"`
-			CreatedAt    int64   `json:"created_at"`
-		} `json:"orders"`
-		TotalPage   int64 `json:"totalPage"`
-		CurrentPage int64 `json:"current_page"`
-		TotalSize   int64 `json:"total_size"`
+	Data []struct {
+		QueryID      int64   `json:"query_id"`
+		ContractCode string  `json:"contract_code"`
+		Symbol       string  `json:"symbol"`
+		Direction    string  `json:"direction"`
+		Offset       string  `json:"offset"`
+		Volume       float64 `json:"volume"`
+		Price        float64 `json:"price"`
+		CreatedAt    int64   `json:"created_at"`
+		Amount       float64 `json:"amount"`
 	} `json:"data"`
+}
+
+// SwapFundingRatesResponse holds funding rates and data response
+type SwapFundingRatesResponse struct {
+	Response
+	Data []FundingRatesData `json:"data"`
 }
 
 // FundingRatesData stores funding rates data
@@ -553,8 +556,8 @@ type FundingRatesData struct {
 	ContractCode    string  `json:"contractCode"`
 	Symbol          string  `json:"symbol"`
 	FeeAsset        string  `json:"fee_asset"`
-	FundingTime     string  `json:"fundingTime"`
-	NextFundingTime string  `json:"next_funding_time"`
+	FundingTime     int64   `json:"fundingTime,string"`
+	NextFundingTime int64   `json:"next_funding_time,string"`
 }
 
 // HistoricalFundingRateData stores historical funding rates for perpetuals

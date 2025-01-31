@@ -8,13 +8,23 @@ import (
 
 // Product holds product information
 type Product struct {
-	ID             string      `json:"id"`
-	BaseCurrency   string      `json:"base_currency"`
-	QuoteCurrency  string      `json:"quote_currency"`
-	BaseMinSize    float64     `json:"base_min_size,string"`
-	BaseMaxSize    interface{} `json:"base_max_size"`
-	QuoteIncrement float64     `json:"quote_increment,string"`
-	DisplayName    string      `json:"string"`
+	ID                        string  `json:"id"`
+	BaseCurrency              string  `json:"base_currency"`
+	QuoteCurrency             string  `json:"quote_currency"`
+	QuoteIncrement            float64 `json:"quote_increment,string"`
+	BaseIncrement             float64 `json:"base_increment,string"`
+	DisplayName               string  `json:"display_name"`
+	MinimumMarketFunds        float64 `json:"min_market_funds,string"`
+	MarginEnabled             bool    `json:"margin_enabled"`
+	PostOnly                  bool    `json:"post_only"`
+	LimitOnly                 bool    `json:"limit_only"`
+	CancelOnly                bool    `json:"cancel_only"`
+	Status                    string  `json:"status"`
+	StatusMessage             string  `json:"status_message"`
+	TradingDisabled           bool    `json:"trading_disabled"`
+	ForeignExchangeStableCoin bool    `json:"fx_stablecoin"`
+	MaxSlippagePercentage     float64 `json:"max_slippage_percentage,string"`
+	AuctionMode               bool    `json:"auction_mode"`
 }
 
 // Ticker holds basic ticker information
@@ -352,17 +362,17 @@ type FillResponse struct {
 
 // WebsocketSubscribe takes in subscription information
 type WebsocketSubscribe struct {
-	Type       string       `json:"type"`
-	ProductIDs []string     `json:"product_ids,omitempty"`
-	Channels   []WsChannels `json:"channels,omitempty"`
-	Signature  string       `json:"signature,omitempty"`
-	Key        string       `json:"key,omitempty"`
-	Passphrase string       `json:"passphrase,omitempty"`
-	Timestamp  string       `json:"timestamp,omitempty"`
+	Type       string   `json:"type"`
+	ProductIDs []string `json:"product_ids,omitempty"`
+	Channels   []any    `json:"channels,omitempty"`
+	Signature  string   `json:"signature,omitempty"`
+	Key        string   `json:"key,omitempty"`
+	Passphrase string   `json:"passphrase,omitempty"`
+	Timestamp  string   `json:"timestamp,omitempty"`
 }
 
-// WsChannels defines outgoing channels for subscription purposes
-type WsChannels struct {
+// WsChannel defines a websocket subscription channel
+type WsChannel struct {
 	Name       string   `json:"name"`
 	ProductIDs []string `json:"product_ids,omitempty"`
 }
@@ -431,13 +441,14 @@ type WebsocketOrderbookSnapshot struct {
 	Type      string      `json:"type"`
 	Bids      [][2]string `json:"bids"`
 	Asks      [][2]string `json:"asks"`
+	Time      time.Time   `json:"time"`
 }
 
 // WebsocketL2Update defines an update on the L2 orderbooks
 type WebsocketL2Update struct {
 	Type      string      `json:"type"`
 	ProductID string      `json:"product_id"`
-	Time      string      `json:"time"`
+	Time      time.Time   `json:"time"`
 	Changes   [][3]string `json:"changes"`
 }
 
@@ -488,3 +499,20 @@ var (
 	// CoinbaseRequestParamsTimeIOC IOC
 	CoinbaseRequestParamsTimeIOC = RequestParamsTimeForceType("IOC")
 )
+
+// TransferHistory returns wallet transfer history
+type TransferHistory struct {
+	ID          string    `json:"id"`
+	Type        string    `json:"type"`
+	CreatedAt   string    `json:"created_at"`
+	CompletedAt string    `json:"completed_at"`
+	CanceledAt  time.Time `json:"canceled_at"`
+	ProcessedAt time.Time `json:"processed_at"`
+	UserNonce   int64     `json:"user_nonce"`
+	Amount      string    `json:"amount"`
+	Details     struct {
+		CoinbaseAccountID       string `json:"coinbase_account_id"`
+		CoinbaseTransactionID   string `json:"coinbase_transaction_id"`
+		CoinbasePaymentMethodID string `json:"coinbase_payment_method_id"`
+	} `json:"details"`
+}

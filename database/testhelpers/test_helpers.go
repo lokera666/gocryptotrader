@@ -2,7 +2,6 @@ package testhelpers
 
 import (
 	"database/sql"
-	"os"
 	"path/filepath"
 	"reflect"
 
@@ -11,7 +10,6 @@ import (
 	psqlConn "github.com/thrasher-corp/gocryptotrader/database/drivers/postgres"
 	sqliteConn "github.com/thrasher-corp/gocryptotrader/database/drivers/sqlite3"
 	"github.com/thrasher-corp/gocryptotrader/database/repository"
-	"github.com/thrasher-corp/gocryptotrader/log"
 	"github.com/thrasher-corp/goose"
 	"github.com/thrasher-corp/sqlboiler/boil"
 )
@@ -27,38 +25,6 @@ var (
 
 // GetConnectionDetails returns connection details for CI or test db instances
 func GetConnectionDetails() *database.Config {
-	_, exists := os.LookupEnv("TRAVIS")
-	if exists {
-		return &database.Config{
-			Enabled: true,
-			Driver:  "postgres",
-			ConnectionDetails: drivers.ConnectionDetails{
-				Host:     "localhost",
-				Port:     5432,
-				Username: "postgres",
-				Password: "",
-				Database: "gct_dev_ci",
-				SSLMode:  "",
-			},
-		}
-	}
-
-	_, exists = os.LookupEnv("APPVEYOR")
-	if exists {
-		return &database.Config{
-			Enabled: true,
-			Driver:  "postgres",
-			ConnectionDetails: drivers.ConnectionDetails{
-				Host:     "localhost",
-				Port:     5432,
-				Username: "postgres",
-				Password: "Password12!",
-				Database: "gct_dev_ci",
-				SSLMode:  "",
-			},
-		}
-	}
-
 	return &database.Config{
 		Enabled:           true,
 		Driver:            "postgres",
@@ -119,14 +85,7 @@ func migrateDB(db *sql.DB) error {
 
 // EnableVerboseTestOutput enables debug output for SQL queries
 func EnableVerboseTestOutput() error {
-	log.RWM.Lock()
-	log.GlobalLogConfig = log.GenDefaultSettings()
-	log.RWM.Unlock()
-	if err := log.SetupGlobalLogger(); err != nil {
-		return err
-	}
-	DBLogger := database.Logger{}
 	boil.DebugMode = true
-	boil.DebugWriter = DBLogger
+	boil.DebugWriter = database.Logger{}
 	return nil
 }

@@ -10,17 +10,20 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/common/crypto"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
@@ -32,13 +35,30 @@ const (
 	geminiWsOrderEvents            = "order/events"
 )
 
+const (
+	marketDataLevel2 = "l2"
+	candlesChannel   = "candles"
+)
+
+var defaultSubscriptions = subscription.List{
+	{Enabled: true, Asset: asset.Spot, Channel: subscription.CandlesChannel, Interval: kline.OneDay},
+	{Enabled: true, Asset: asset.Spot, Channel: subscription.OrderbookChannel},
+	// Authenticated connection is directly to the orders URI, so this is implicit
+	// {Enabled: true, Channel: subscription.MyOrdersChannel, Authenticated: true},
+}
+
+var subscriptionNames = map[string]string{
+	subscription.CandlesChannel:   candlesChannel,
+	subscription.OrderbookChannel: marketDataLevel2,
+}
+
 // Instantiates a communications channel between websocket connections
 var comms = make(chan stream.Response)
 
 // WsConnect initiates a websocket connection
 func (g *Gemini) WsConnect() error {
 	if !g.Websocket.IsEnabled() || !g.IsEnabled() {
-		return errors.New(stream.WebsocketNotEnabled)
+		return stream.ErrWebsocketNotEnabled
 	}
 
 	var dialer websocket.Dialer
@@ -61,118 +81,50 @@ func (g *Gemini) WsConnect() error {
 	return nil
 }
 
-// GenerateDefaultSubscriptions Adds default subscriptions to websocket to be handled by ManageSubscriptions()
-func (g *Gemini) GenerateDefaultSubscriptions() ([]stream.ChannelSubscription, error) {
-	// See gemini_types.go for more subscription/candle vars
-	var channels = []string{
-		marketDataLevel2,
-		candles1d,
-	}
+// generateSubscriptions returns a list of subscriptions from the configured subscriptions feature
+func (g *Gemini) generateSubscriptions() (subscription.List, error) {
+	return g.Features.Subscriptions.ExpandTemplates(g)
+}
 
-	pairs, err := g.GetEnabledPairs(asset.Spot)
-	if err != nil {
-		return nil, err
-	}
-
-	var subscriptions []stream.ChannelSubscription
-	for x := range channels {
-		for y := range pairs {
-			subscriptions = append(subscriptions, stream.ChannelSubscription{
-				Channel:  channels[x],
-				Currency: pairs[y],
-				Asset:    asset.Spot,
-			})
-		}
-	}
-	return subscriptions, nil
+// GetSubscriptionTemplate returns a subscription channel template
+func (g *Gemini) GetSubscriptionTemplate(_ *subscription.Subscription) (*template.Template, error) {
+	return template.New("master.tmpl").Funcs(template.FuncMap{
+		"channelName": channelName,
+		"interval":    channelInterval,
+	}).Parse(subTplText)
 }
 
 // Subscribe sends a websocket message to receive data from the channel
-func (g *Gemini) Subscribe(channelsToSubscribe []stream.ChannelSubscription) error {
-	channels := make([]string, 0, len(channelsToSubscribe))
-	for x := range channelsToSubscribe {
-		if common.StringDataCompareInsensitive(channels, channelsToSubscribe[x].Channel) {
-			continue
-		}
-		channels = append(channels, channelsToSubscribe[x].Channel)
-	}
-
-	var pairs currency.Pairs
-	for x := range channelsToSubscribe {
-		if pairs.Contains(channelsToSubscribe[x].Currency, true) {
-			continue
-		}
-		pairs = append(pairs, channelsToSubscribe[x].Currency)
-	}
-
-	fmtPairs, err := g.FormatExchangeCurrencies(pairs, asset.Spot)
-	if err != nil {
-		return err
-	}
-
-	subs := make([]wsSubscriptions, len(channels))
-	for x := range channels {
-		subs[x] = wsSubscriptions{
-			Name:    channels[x],
-			Symbols: strings.Split(fmtPairs, ","),
-		}
-	}
-
-	wsSub := wsSubscribeRequest{
-		Type:          "subscribe",
-		Subscriptions: subs,
-	}
-	err = g.Websocket.Conn.SendJSONMessage(wsSub)
-	if err != nil {
-		return err
-	}
-
-	g.Websocket.AddSuccessfulSubscriptions(channelsToSubscribe...)
-	return nil
+func (g *Gemini) Subscribe(subs subscription.List) error {
+	return g.manageSubs(subs, wsSubscribeOp)
 }
 
 // Unsubscribe sends a websocket message to stop receiving data from the channel
-func (g *Gemini) Unsubscribe(channelsToUnsubscribe []stream.ChannelSubscription) error {
-	channels := make([]string, 0, len(channelsToUnsubscribe))
-	for x := range channelsToUnsubscribe {
-		if common.StringDataCompareInsensitive(channels, channelsToUnsubscribe[x].Channel) {
-			continue
-		}
-		channels = append(channels, channelsToUnsubscribe[x].Channel)
+func (g *Gemini) Unsubscribe(subs subscription.List) error {
+	return g.manageSubs(subs, wsUnsubscribeOp)
+}
+
+func (g *Gemini) manageSubs(subs subscription.List, op wsSubOp) error {
+	req := wsSubscribeRequest{
+		Type:          op,
+		Subscriptions: make([]wsSubscriptions, 0, len(subs)),
+	}
+	for _, s := range subs {
+		req.Subscriptions = append(req.Subscriptions, wsSubscriptions{
+			Name:    s.QualifiedChannel,
+			Symbols: s.Pairs.Strings(),
+		})
 	}
 
-	var pairs currency.Pairs
-	for x := range channelsToUnsubscribe {
-		if pairs.Contains(channelsToUnsubscribe[x].Currency, true) {
-			continue
-		}
-		pairs = append(pairs, channelsToUnsubscribe[x].Currency)
-	}
-
-	fmtPairs, err := g.FormatExchangeCurrencies(pairs, asset.Spot)
-	if err != nil {
+	if err := g.Websocket.Conn.SendJSONMessage(context.TODO(), request.Unset, req); err != nil {
 		return err
 	}
 
-	subs := make([]wsSubscriptions, len(channels))
-	for x := range channels {
-		subs[x] = wsSubscriptions{
-			Name:    channels[x],
-			Symbols: strings.Split(fmtPairs, ","),
-		}
+	if op == wsUnsubscribeOp {
+		return g.Websocket.RemoveSubscriptions(g.Websocket.Conn, subs...)
 	}
 
-	wsSub := wsSubscribeRequest{
-		Type:          "unsubscribe",
-		Subscriptions: subs,
-	}
-	err = g.Websocket.Conn.SendJSONMessage(wsSub)
-	if err != nil {
-		return err
-	}
-
-	g.Websocket.RemoveSuccessfulUnsubscriptions(channelsToUnsubscribe...)
-	return nil
+	return g.Websocket.AddSuccessfulSubscriptions(g.Websocket.Conn, subs...)
 }
 
 // WsAuth will connect to Gemini's secure endpoint
@@ -217,6 +169,7 @@ func (g *Gemini) WsAuth(ctx context.Context, dialer *websocket.Dialer) error {
 	if err != nil {
 		return fmt.Errorf("%v Websocket connection %v error. Error %v", g.Name, endpoint, err)
 	}
+	g.Websocket.Wg.Add(1)
 	go g.wsFunnelConnectionData(g.Websocket.AuthConn)
 	return nil
 }
@@ -529,8 +482,8 @@ func (g *Gemini) wsProcessUpdate(result *wsL2MarketData) error {
 		return err
 	}
 
-	bids := make([]orderbook.Item, 0, len(result.Changes))
-	asks := make([]orderbook.Item, 0, len(result.Changes))
+	bids := make([]orderbook.Tranche, 0, len(result.Changes))
+	asks := make([]orderbook.Tranche, 0, len(result.Changes))
 
 	for x := range result.Changes {
 		price, err := strconv.ParseFloat(result.Changes[x][1], 64)
@@ -541,7 +494,7 @@ func (g *Gemini) wsProcessUpdate(result *wsL2MarketData) error {
 		if err != nil {
 			return err
 		}
-		obItem := orderbook.Item{
+		obItem := orderbook.Tranche{
 			Amount: amount,
 			Price:  price,
 		}
@@ -560,6 +513,7 @@ func (g *Gemini) wsProcessUpdate(result *wsL2MarketData) error {
 		newOrderBook.Pair = pair
 		newOrderBook.Exchange = g.Name
 		newOrderBook.VerifyOrderbook = g.CanVerifyOrderbook
+		newOrderBook.LastUpdated = time.Now() // No time is sent
 		err := g.Websocket.Orderbook.LoadSnapshot(&newOrderBook)
 		if err != nil {
 			return err
@@ -569,10 +523,11 @@ func (g *Gemini) wsProcessUpdate(result *wsL2MarketData) error {
 			return nil
 		}
 		err := g.Websocket.Orderbook.Update(&orderbook.Update{
-			Asks:  asks,
-			Bids:  bids,
-			Pair:  pair,
-			Asset: asset.Spot,
+			Asks:       asks,
+			Bids:       bids,
+			Pair:       pair,
+			Asset:      asset.Spot,
+			UpdateTime: time.Now(), // No time is sent
 		})
 		if err != nil {
 			return err
@@ -610,3 +565,28 @@ func (g *Gemini) wsProcessUpdate(result *wsL2MarketData) error {
 
 	return trade.AddTradesToBuffer(g.Name, trades...)
 }
+
+func channelName(s *subscription.Subscription) string {
+	if n, ok := subscriptionNames[s.Channel]; ok {
+		return n
+	}
+	panic(fmt.Errorf("%w: %s", subscription.ErrNotSupported, s.Channel))
+}
+
+func channelInterval(i kline.Interval) string {
+	switch i {
+	case kline.OneMin, kline.FiveMin, kline.FifteenMin, kline.ThirtyMin, kline.OneHour, kline.SixHour:
+		return i.Short()
+	case kline.OneDay:
+		return "1d"
+	}
+	panic(fmt.Errorf("%w: %s", kline.ErrUnsupportedInterval, i.Short()))
+}
+
+const subTplText = `
+{{ range $asset, $pairs := $.AssetPairs }}
+	{{- channelName $.S -}}
+	{{- with $i := $.S.Interval -}} _ {{- interval $i }}{{ end -}}
+	{{- $.AssetSeparator }}
+{{- end }}
+`

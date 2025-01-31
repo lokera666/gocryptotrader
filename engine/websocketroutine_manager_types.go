@@ -8,18 +8,24 @@ import (
 )
 
 var (
-	errNilOrderManager                 = errors.New("nil order manager received")
 	errNilCurrencyPairSyncer           = errors.New("nil currency pair syncer received")
 	errNilCurrencyConfig               = errors.New("nil currency config received")
 	errNilCurrencyPairFormat           = errors.New("nil currency pair format received")
 	errNilWebsocketDataHandlerFunction = errors.New("websocket data handler function is nil")
 	errNilWebsocket                    = errors.New("websocket is nil")
 	errRoutineManagerNotStarted        = errors.New("websocket routine manager not started")
+	errUseAPointer                     = errors.New("could not process, pass to websocket routine manager as a pointer")
 )
 
-// websocketRoutineManager is used to process websocket updates from a unified location
-type websocketRoutineManager struct {
-	started         int32
+const (
+	stoppedState int32 = iota
+	startingState
+	readyState
+)
+
+// WebsocketRoutineManager is used to process websocket updates from a unified location
+type WebsocketRoutineManager struct {
+	state           int32
 	verbose         bool
 	exchangeManager iExchangeManager
 	orderManager    iOrderManager

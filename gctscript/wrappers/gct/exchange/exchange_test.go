@@ -34,13 +34,9 @@ const (
 
 var (
 	settings = engine.Settings{
-		ConfigFile:          filepath.Join("..", "..", "..", "..", "testdata", "configtest.json"),
-		EnableDryRun:        true,
-		DataDir:             filepath.Join("..", "..", "..", "..", "testdata", "gocryptotrader"),
-		Verbose:             false,
-		EnableGRPC:          false,
-		EnableDeprecatedRPC: false,
-		EnableWebsocketRPC:  false,
+		CoreSettings: engine.CoreSettings{EnableDryRun: true},
+		ConfigFile:   filepath.Join("..", "..", "..", "..", "testdata", "configtest.json"),
+		DataDir:      filepath.Join("..", "..", "..", "..", "testdata", "gocryptotrader"),
 	}
 	exchangeTest = Exchange{}
 )
@@ -205,10 +201,10 @@ func setupEngine() (err error) {
 		return err
 	}
 
-	em := engine.SetupExchangeManager()
+	em := engine.NewExchangeManager()
 	engine.Bot.ExchangeManager = em
 
-	return engine.Bot.LoadExchange(exchName, nil)
+	return engine.Bot.LoadExchange(exchName)
 }
 
 func cleanup() {

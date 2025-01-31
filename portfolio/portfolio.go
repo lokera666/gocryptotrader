@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -107,7 +108,7 @@ func (b *Base) GetRippleBalance(address string) (float64, error) {
 	return result.XRPBalance, nil
 }
 
-// GetAddressBalance acceses the portfolio base and returns the balance by passed
+// GetAddressBalance accesses the portfolio base and returns the balance by passed
 // in address, coin type and description
 func (b *Base) GetAddressBalance(address, description string, coinType currency.Code) (float64, bool) {
 	for x := range b.Addresses {
@@ -415,7 +416,7 @@ func (b *Base) GetPortfolioSummary() Summary {
 	var portfolioExchanges []string
 	for i := range b.Addresses {
 		if strings.EqualFold(b.Addresses[i].Description, ExchangeAddress) {
-			if !common.StringDataCompare(portfolioExchanges, b.Addresses[i].Address) {
+			if !slices.Contains(portfolioExchanges, b.Addresses[i].Address) {
 				portfolioExchanges = append(portfolioExchanges, b.Addresses[i].Address)
 			}
 		}
@@ -514,7 +515,7 @@ func (b *Base) IsExchangeSupported(exchange, address string) (ret bool) {
 			continue
 		}
 		exchangeList := strings.Split(b.Addresses[x].SupportedExchanges, ",")
-		return common.StringDataContainsInsensitive(exchangeList, exchange)
+		return common.StringSliceContainsInsensitive(exchangeList, exchange)
 	}
 	return
 }

@@ -65,9 +65,9 @@ func FitStringToLimit(str, spacer string, limit int, upper bool) string {
 		return str[0:limit]
 	}
 	spacerLen := len(spacer)
-	for i := 0; i < limResp; i++ {
+	for i := range limResp {
 		str += spacer
-		for j := 0; j < spacerLen; j++ {
+		for j := range spacerLen {
 			if j > 0 {
 				// prevent clever people from going beyond
 				// the limit by having a spacer longer than 1
@@ -83,6 +83,10 @@ func FitStringToLimit(str, spacer string, limit int, upper bool) string {
 func RegisterBacktesterSubLoggers() error {
 	var err error
 	Backtester, err = log.NewSubLogger("Backtester")
+	if err != nil {
+		return err
+	}
+	LiveStrategy, err = log.NewSubLogger("LiveStrategy")
 	if err != nil {
 		return err
 	}
@@ -110,15 +114,15 @@ func RegisterBacktesterSubLoggers() error {
 	if err != nil {
 		return err
 	}
-	Backtester, err = log.NewSubLogger("Sizing")
-	if err != nil {
-		return err
-	}
 	Holdings, err = log.NewSubLogger("Holdings")
 	if err != nil {
 		return err
 	}
 	Data, err = log.NewSubLogger("Data")
+	if err != nil {
+		return err
+	}
+	FundManager, err = log.NewSubLogger("FundManager")
 	if err != nil {
 		return err
 	}

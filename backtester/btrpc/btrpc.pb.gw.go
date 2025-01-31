@@ -103,182 +103,182 @@ func local_request_BacktesterService_ExecuteStrategyFromConfig_0(ctx context.Con
 
 }
 
-func request_BacktesterService_ListAllRuns_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ListAllRunsRequest
+func request_BacktesterService_ListAllTasks_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ListAllTasksRequest
 	var metadata runtime.ServerMetadata
 
-	msg, err := client.ListAllRuns(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.ListAllTasks(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_BacktesterService_ListAllRuns_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ListAllRunsRequest
+func local_request_BacktesterService_ListAllTasks_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ListAllTasksRequest
 	var metadata runtime.ServerMetadata
 
-	msg, err := server.ListAllRuns(ctx, &protoReq)
-	return msg, metadata, err
-
-}
-
-var (
-	filter_BacktesterService_StartRun_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
-)
-
-func request_BacktesterService_StartRun_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq StartRunRequest
-	var metadata runtime.ServerMetadata
-
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BacktesterService_StartRun_0); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-
-	msg, err := client.StartRun(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-
-}
-
-func local_request_BacktesterService_StartRun_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq StartRunRequest
-	var metadata runtime.ServerMetadata
-
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BacktesterService_StartRun_0); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-
-	msg, err := server.StartRun(ctx, &protoReq)
-	return msg, metadata, err
-
-}
-
-func request_BacktesterService_StartAllRuns_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq StartAllRunsRequest
-	var metadata runtime.ServerMetadata
-
-	msg, err := client.StartAllRuns(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-
-}
-
-func local_request_BacktesterService_StartAllRuns_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq StartAllRunsRequest
-	var metadata runtime.ServerMetadata
-
-	msg, err := server.StartAllRuns(ctx, &protoReq)
+	msg, err := server.ListAllTasks(ctx, &protoReq)
 	return msg, metadata, err
 
 }
 
 var (
-	filter_BacktesterService_StopRun_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+	filter_BacktesterService_StartTask_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 )
 
-func request_BacktesterService_StopRun_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq StopRunRequest
+func request_BacktesterService_StartTask_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq StartTaskRequest
 	var metadata runtime.ServerMetadata
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BacktesterService_StopRun_0); err != nil {
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BacktesterService_StartTask_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := client.StopRun(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.StartTask(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_BacktesterService_StopRun_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq StopRunRequest
+func local_request_BacktesterService_StartTask_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq StartTaskRequest
 	var metadata runtime.ServerMetadata
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BacktesterService_StopRun_0); err != nil {
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BacktesterService_StartTask_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := server.StopRun(ctx, &protoReq)
+	msg, err := server.StartTask(ctx, &protoReq)
 	return msg, metadata, err
 
 }
 
-func request_BacktesterService_StopAllRuns_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq StopAllRunsRequest
+func request_BacktesterService_StartAllTasks_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq StartAllTasksRequest
 	var metadata runtime.ServerMetadata
 
-	msg, err := client.StopAllRuns(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.StartAllTasks(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_BacktesterService_StopAllRuns_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq StopAllRunsRequest
+func local_request_BacktesterService_StartAllTasks_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq StartAllTasksRequest
 	var metadata runtime.ServerMetadata
 
-	msg, err := server.StopAllRuns(ctx, &protoReq)
+	msg, err := server.StartAllTasks(ctx, &protoReq)
 	return msg, metadata, err
 
 }
 
 var (
-	filter_BacktesterService_ClearRun_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+	filter_BacktesterService_StopTask_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 )
 
-func request_BacktesterService_ClearRun_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ClearRunRequest
+func request_BacktesterService_StopTask_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq StopTaskRequest
 	var metadata runtime.ServerMetadata
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BacktesterService_ClearRun_0); err != nil {
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BacktesterService_StopTask_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := client.ClearRun(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.StopTask(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_BacktesterService_ClearRun_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ClearRunRequest
+func local_request_BacktesterService_StopTask_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq StopTaskRequest
 	var metadata runtime.ServerMetadata
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BacktesterService_ClearRun_0); err != nil {
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BacktesterService_StopTask_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
-	msg, err := server.ClearRun(ctx, &protoReq)
+	msg, err := server.StopTask(ctx, &protoReq)
 	return msg, metadata, err
 
 }
 
-func request_BacktesterService_ClearAllRuns_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ClearAllRunsRequest
+func request_BacktesterService_StopAllTasks_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq StopAllTasksRequest
 	var metadata runtime.ServerMetadata
 
-	msg, err := client.ClearAllRuns(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.StopAllTasks(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
 }
 
-func local_request_BacktesterService_ClearAllRuns_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ClearAllRunsRequest
+func local_request_BacktesterService_StopAllTasks_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq StopAllTasksRequest
 	var metadata runtime.ServerMetadata
 
-	msg, err := server.ClearAllRuns(ctx, &protoReq)
+	msg, err := server.StopAllTasks(ctx, &protoReq)
+	return msg, metadata, err
+
+}
+
+var (
+	filter_BacktesterService_ClearTask_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+)
+
+func request_BacktesterService_ClearTask_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ClearTaskRequest
+	var metadata runtime.ServerMetadata
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BacktesterService_ClearTask_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := client.ClearTask(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+
+}
+
+func local_request_BacktesterService_ClearTask_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ClearTaskRequest
+	var metadata runtime.ServerMetadata
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_BacktesterService_ClearTask_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := server.ClearTask(ctx, &protoReq)
+	return msg, metadata, err
+
+}
+
+func request_BacktesterService_ClearAllTasks_0(ctx context.Context, marshaler runtime.Marshaler, client BacktesterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ClearAllTasksRequest
+	var metadata runtime.ServerMetadata
+
+	msg, err := client.ClearAllTasks(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+
+}
+
+func local_request_BacktesterService_ClearAllTasks_0(ctx context.Context, marshaler runtime.Marshaler, server BacktesterServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ClearAllTasksRequest
+	var metadata runtime.ServerMetadata
+
+	msg, err := server.ClearAllTasks(ctx, &protoReq)
 	return msg, metadata, err
 
 }
@@ -296,21 +296,20 @@ func RegisterBacktesterServiceHandlerServer(ctx context.Context, mux *runtime.Se
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/ExecuteStrategyFromFile", runtime.WithHTTPPathPattern("/v1/executestrategyfromfile"))
+		ctx, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/ExecuteStrategyFromFile", runtime.WithHTTPPathPattern("/v1/executestrategyfromfile"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_BacktesterService_ExecuteStrategyFromFile_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_BacktesterService_ExecuteStrategyFromFile_0(ctx, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_ExecuteStrategyFromFile_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_ExecuteStrategyFromFile_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -321,196 +320,188 @@ func RegisterBacktesterServiceHandlerServer(ctx context.Context, mux *runtime.Se
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/ExecuteStrategyFromConfig", runtime.WithHTTPPathPattern("/v1/executestrategyfromconfig"))
+		ctx, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/ExecuteStrategyFromConfig", runtime.WithHTTPPathPattern("/v1/executestrategyfromconfig"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_BacktesterService_ExecuteStrategyFromConfig_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_BacktesterService_ExecuteStrategyFromConfig_0(ctx, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_ExecuteStrategyFromConfig_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_ExecuteStrategyFromConfig_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("GET", pattern_BacktesterService_ListAllRuns_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("GET", pattern_BacktesterService_ListAllTasks_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/ListAllRuns", runtime.WithHTTPPathPattern("/v1/listallruns"))
+		ctx, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/ListAllTasks", runtime.WithHTTPPathPattern("/v1/listalltasks"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_BacktesterService_ListAllRuns_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_BacktesterService_ListAllTasks_0(ctx, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_ListAllRuns_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_ListAllTasks_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_BacktesterService_StartRun_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_BacktesterService_StartTask_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/StartRun", runtime.WithHTTPPathPattern("/v1/startrun"))
+		ctx, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/StartTask", runtime.WithHTTPPathPattern("/v1/starttask"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_BacktesterService_StartRun_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_BacktesterService_StartTask_0(ctx, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_StartRun_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_StartTask_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_BacktesterService_StartAllRuns_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_BacktesterService_StartAllTasks_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/StartAllRuns", runtime.WithHTTPPathPattern("/v1/startallruns"))
+		ctx, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/StartAllTasks", runtime.WithHTTPPathPattern("/v1/startalltasks"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_BacktesterService_StartAllRuns_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_BacktesterService_StartAllTasks_0(ctx, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_StartAllRuns_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_StartAllTasks_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_BacktesterService_StopRun_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_BacktesterService_StopTask_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/StopRun", runtime.WithHTTPPathPattern("/v1/stoprun"))
+		ctx, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/StopTask", runtime.WithHTTPPathPattern("/v1/stoptask"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_BacktesterService_StopRun_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_BacktesterService_StopTask_0(ctx, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_StopRun_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_StopTask_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_BacktesterService_StopAllRuns_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_BacktesterService_StopAllTasks_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/StopAllRuns", runtime.WithHTTPPathPattern("/v1/stopallruns"))
+		ctx, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/StopAllTasks", runtime.WithHTTPPathPattern("/v1/stopalltasks"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_BacktesterService_StopAllRuns_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_BacktesterService_StopAllTasks_0(ctx, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_StopAllRuns_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_StopAllTasks_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("DELETE", pattern_BacktesterService_ClearRun_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("DELETE", pattern_BacktesterService_ClearTask_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/ClearRun", runtime.WithHTTPPathPattern("/v1/clearrun"))
+		ctx, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/ClearTask", runtime.WithHTTPPathPattern("/v1/cleartask"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_BacktesterService_ClearRun_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_BacktesterService_ClearTask_0(ctx, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_ClearRun_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_ClearTask_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("DELETE", pattern_BacktesterService_ClearAllRuns_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("DELETE", pattern_BacktesterService_ClearAllTasks_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/ClearAllRuns", runtime.WithHTTPPathPattern("/v1/clearallruns"))
+		ctx, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/btrpc.BacktesterService/ClearAllTasks", runtime.WithHTTPPathPattern("/v1/clearalltasks"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_BacktesterService_ClearAllRuns_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_BacktesterService_ClearAllTasks_0(ctx, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_ClearAllRuns_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_ClearAllTasks_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -560,20 +551,19 @@ func RegisterBacktesterServiceHandlerClient(ctx context.Context, mux *runtime.Se
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/ExecuteStrategyFromFile", runtime.WithHTTPPathPattern("/v1/executestrategyfromfile"))
+		ctx, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/ExecuteStrategyFromFile", runtime.WithHTTPPathPattern("/v1/executestrategyfromfile"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_BacktesterService_ExecuteStrategyFromFile_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		resp, md, err := request_BacktesterService_ExecuteStrategyFromFile_0(ctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_ExecuteStrategyFromFile_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_ExecuteStrategyFromFile_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -582,174 +572,166 @@ func RegisterBacktesterServiceHandlerClient(ctx context.Context, mux *runtime.Se
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/ExecuteStrategyFromConfig", runtime.WithHTTPPathPattern("/v1/executestrategyfromconfig"))
+		ctx, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/ExecuteStrategyFromConfig", runtime.WithHTTPPathPattern("/v1/executestrategyfromconfig"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_BacktesterService_ExecuteStrategyFromConfig_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		resp, md, err := request_BacktesterService_ExecuteStrategyFromConfig_0(ctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_ExecuteStrategyFromConfig_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_ExecuteStrategyFromConfig_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("GET", pattern_BacktesterService_ListAllRuns_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("GET", pattern_BacktesterService_ListAllTasks_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/ListAllRuns", runtime.WithHTTPPathPattern("/v1/listallruns"))
+		ctx, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/ListAllTasks", runtime.WithHTTPPathPattern("/v1/listalltasks"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_BacktesterService_ListAllRuns_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		resp, md, err := request_BacktesterService_ListAllTasks_0(ctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_ListAllRuns_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_ListAllTasks_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_BacktesterService_StartRun_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_BacktesterService_StartTask_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/StartRun", runtime.WithHTTPPathPattern("/v1/startrun"))
+		ctx, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/StartTask", runtime.WithHTTPPathPattern("/v1/starttask"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_BacktesterService_StartRun_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		resp, md, err := request_BacktesterService_StartTask_0(ctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_StartRun_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_StartTask_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_BacktesterService_StartAllRuns_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_BacktesterService_StartAllTasks_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/StartAllRuns", runtime.WithHTTPPathPattern("/v1/startallruns"))
+		ctx, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/StartAllTasks", runtime.WithHTTPPathPattern("/v1/startalltasks"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_BacktesterService_StartAllRuns_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		resp, md, err := request_BacktesterService_StartAllTasks_0(ctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_StartAllRuns_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_StartAllTasks_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_BacktesterService_StopRun_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_BacktesterService_StopTask_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/StopRun", runtime.WithHTTPPathPattern("/v1/stoprun"))
+		ctx, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/StopTask", runtime.WithHTTPPathPattern("/v1/stoptask"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_BacktesterService_StopRun_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		resp, md, err := request_BacktesterService_StopTask_0(ctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_StopRun_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_StopTask_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("POST", pattern_BacktesterService_StopAllRuns_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_BacktesterService_StopAllTasks_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/StopAllRuns", runtime.WithHTTPPathPattern("/v1/stopallruns"))
+		ctx, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/StopAllTasks", runtime.WithHTTPPathPattern("/v1/stopalltasks"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_BacktesterService_StopAllRuns_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		resp, md, err := request_BacktesterService_StopAllTasks_0(ctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_StopAllRuns_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_StopAllTasks_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("DELETE", pattern_BacktesterService_ClearRun_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("DELETE", pattern_BacktesterService_ClearTask_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/ClearRun", runtime.WithHTTPPathPattern("/v1/clearrun"))
+		ctx, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/ClearTask", runtime.WithHTTPPathPattern("/v1/cleartask"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_BacktesterService_ClearRun_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		resp, md, err := request_BacktesterService_ClearTask_0(ctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_ClearRun_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_ClearTask_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
-	mux.Handle("DELETE", pattern_BacktesterService_ClearAllRuns_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("DELETE", pattern_BacktesterService_ClearAllTasks_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/ClearAllRuns", runtime.WithHTTPPathPattern("/v1/clearallruns"))
+		ctx, err = runtime.AnnotateContext(ctx, mux, req, "/btrpc.BacktesterService/ClearAllTasks", runtime.WithHTTPPathPattern("/v1/clearalltasks"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_BacktesterService_ClearAllRuns_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		resp, md, err := request_BacktesterService_ClearAllTasks_0(ctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_BacktesterService_ClearAllRuns_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_BacktesterService_ClearAllTasks_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -761,19 +743,19 @@ var (
 
 	pattern_BacktesterService_ExecuteStrategyFromConfig_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "executestrategyfromconfig"}, ""))
 
-	pattern_BacktesterService_ListAllRuns_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "listallruns"}, ""))
+	pattern_BacktesterService_ListAllTasks_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "listalltasks"}, ""))
 
-	pattern_BacktesterService_StartRun_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "startrun"}, ""))
+	pattern_BacktesterService_StartTask_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "starttask"}, ""))
 
-	pattern_BacktesterService_StartAllRuns_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "startallruns"}, ""))
+	pattern_BacktesterService_StartAllTasks_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "startalltasks"}, ""))
 
-	pattern_BacktesterService_StopRun_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "stoprun"}, ""))
+	pattern_BacktesterService_StopTask_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "stoptask"}, ""))
 
-	pattern_BacktesterService_StopAllRuns_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "stopallruns"}, ""))
+	pattern_BacktesterService_StopAllTasks_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "stopalltasks"}, ""))
 
-	pattern_BacktesterService_ClearRun_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "clearrun"}, ""))
+	pattern_BacktesterService_ClearTask_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "cleartask"}, ""))
 
-	pattern_BacktesterService_ClearAllRuns_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "clearallruns"}, ""))
+	pattern_BacktesterService_ClearAllTasks_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "clearalltasks"}, ""))
 )
 
 var (
@@ -781,17 +763,17 @@ var (
 
 	forward_BacktesterService_ExecuteStrategyFromConfig_0 = runtime.ForwardResponseMessage
 
-	forward_BacktesterService_ListAllRuns_0 = runtime.ForwardResponseMessage
+	forward_BacktesterService_ListAllTasks_0 = runtime.ForwardResponseMessage
 
-	forward_BacktesterService_StartRun_0 = runtime.ForwardResponseMessage
+	forward_BacktesterService_StartTask_0 = runtime.ForwardResponseMessage
 
-	forward_BacktesterService_StartAllRuns_0 = runtime.ForwardResponseMessage
+	forward_BacktesterService_StartAllTasks_0 = runtime.ForwardResponseMessage
 
-	forward_BacktesterService_StopRun_0 = runtime.ForwardResponseMessage
+	forward_BacktesterService_StopTask_0 = runtime.ForwardResponseMessage
 
-	forward_BacktesterService_StopAllRuns_0 = runtime.ForwardResponseMessage
+	forward_BacktesterService_StopAllTasks_0 = runtime.ForwardResponseMessage
 
-	forward_BacktesterService_ClearRun_0 = runtime.ForwardResponseMessage
+	forward_BacktesterService_ClearTask_0 = runtime.ForwardResponseMessage
 
-	forward_BacktesterService_ClearAllRuns_0 = runtime.ForwardResponseMessage
+	forward_BacktesterService_ClearAllTasks_0 = runtime.ForwardResponseMessage
 )

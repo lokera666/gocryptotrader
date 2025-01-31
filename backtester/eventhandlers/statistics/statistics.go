@@ -5,112 +5,130 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/thrasher-corp/gocryptotrader/backtester/common"
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventhandlers/portfolio"
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventhandlers/portfolio/compliance"
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventhandlers/portfolio/holdings"
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventtypes/fill"
+	"github.com/thrasher-corp/gocryptotrader/backtester/eventtypes/kline"
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventtypes/order"
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventtypes/signal"
+	gctcommon "github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/common/key"
 	"github.com/thrasher-corp/gocryptotrader/currency"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
 // Reset returns the struct to defaults
-func (s *Statistic) Reset() {
-	*s = Statistic{}
+func (s *Statistic) Reset() error {
+	if s == nil {
+		return gctcommon.ErrNilPointer
+	}
+	s.StrategyName = ""
+	s.StrategyDescription = ""
+	s.StrategyNickname = ""
+	s.StrategyGoal = ""
+	s.StartDate = time.Time{}
+	s.EndDate = time.Time{}
+	s.CandleInterval = 0
+	s.RiskFreeRate = decimal.Zero
+	s.ExchangeAssetPairStatistics = make(map[key.ExchangePairAsset]*CurrencyPairStatistic)
+	s.CurrencyStatistics = nil
+	s.TotalBuyOrders = 0
+	s.TotalLongOrders = 0
+	s.TotalShortOrders = 0
+	s.TotalSellOrders = 0
+	s.TotalOrders = 0
+	s.BiggestDrawdown = nil
+	s.BestStrategyResults = nil
+	s.BestMarketMovement = nil
+	s.WasAnyDataMissing = false
+	s.FundingStatistics = nil
+	s.FundManager = nil
+	s.HasCollateral = false
+	return nil
 }
 
-// SetupEventForTime sets up the big map for to store important data at each time interval
-func (s *Statistic) SetupEventForTime(ev common.DataEventHandler) error {
+// SetEventForOffset sets up the big map for to store important data at each time interval
+func (s *Statistic) SetEventForOffset(ev common.Event) error {
 	if ev == nil {
 		return common.ErrNilEvent
+	}
+	if ev.GetBase() == nil {
+		return fmt.Errorf("%w event base", common.ErrNilEvent)
 	}
 	ex := ev.GetExchange()
 	a := ev.GetAssetType()
 	p := ev.Pair()
-	s.setupMap(ex, a)
-	lookup := s.ExchangeAssetPairStatistics[ex][a][p]
-	if lookup == nil {
-		lookup = &CurrencyPairStatistic{
-			Exchange:       ev.GetExchange(),
-			Asset:          ev.GetAssetType(),
-			Currency:       ev.Pair(),
+	if s.ExchangeAssetPairStatistics == nil {
+		s.ExchangeAssetPairStatistics = make(map[key.ExchangePairAsset]*CurrencyPairStatistic)
+	}
+	mapKey := key.ExchangePairAsset{
+		Exchange: ex,
+		Base:     p.Base.Item,
+		Quote:    p.Quote.Item,
+		Asset:    a,
+	}
+	stats, ok := s.ExchangeAssetPairStatistics[mapKey]
+	if !ok {
+		stats = &CurrencyPairStatistic{
+			Exchange:       ex,
+			Asset:          a,
+			Currency:       p,
 			UnderlyingPair: ev.GetUnderlyingPair(),
 		}
+		s.ExchangeAssetPairStatistics[mapKey] = stats
 	}
-	for i := range lookup.Events {
-		if lookup.Events[i].Offset == ev.GetOffset() {
-			return ErrAlreadyProcessed
-		}
-	}
-	lookup.Events = append(lookup.Events,
-		DataAtOffset{
-			DataEvent: ev,
-			Offset:    ev.GetOffset(),
-			Time:      ev.GetTime(),
-		},
-	)
 
-	s.ExchangeAssetPairStatistics[ex][a][p] = lookup
+	for i := range stats.Events {
+		if stats.Events[i].Offset != ev.GetOffset() {
+			continue
+		}
+		return applyEventAtOffset(ev, &stats.Events[i])
+	}
+
+	// add to events and then apply the supplied event to it
+	stats.Events = append(stats.Events, DataAtOffset{
+		Offset: ev.GetOffset(),
+		Time:   ev.GetTime(),
+	})
+	err := applyEventAtOffset(ev, &stats.Events[len(stats.Events)-1])
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func (s *Statistic) setupMap(ex string, a asset.Item) {
-	if s.ExchangeAssetPairStatistics == nil {
-		s.ExchangeAssetPairStatistics = make(map[string]map[asset.Item]map[currency.Pair]*CurrencyPairStatistic)
-	}
-	if s.ExchangeAssetPairStatistics[ex] == nil {
-		s.ExchangeAssetPairStatistics[ex] = make(map[asset.Item]map[currency.Pair]*CurrencyPairStatistic)
-	}
-	if s.ExchangeAssetPairStatistics[ex][a] == nil {
-		s.ExchangeAssetPairStatistics[ex][a] = make(map[currency.Pair]*CurrencyPairStatistic)
-	}
-}
-
-// SetEventForOffset sets the event for the time period in the event
-func (s *Statistic) SetEventForOffset(ev common.EventHandler) error {
-	if ev == nil {
-		return common.ErrNilEvent
-	}
-	if s.ExchangeAssetPairStatistics == nil {
-		return errExchangeAssetPairStatsUnset
-	}
-	exch := ev.GetExchange()
-	a := ev.GetAssetType()
-	p := ev.Pair()
-	offset := ev.GetOffset()
-	lookup := s.ExchangeAssetPairStatistics[exch][a][p]
-	if lookup == nil {
-		return fmt.Errorf("%w for %v %v %v to set signal event", errCurrencyStatisticsUnset, exch, a, p)
-	}
-	for i := len(lookup.Events) - 1; i >= 0; i-- {
-		if lookup.Events[i].Offset == offset {
-			return applyEventAtOffset(ev, lookup, i)
-		}
-	}
-
-	return fmt.Errorf("%w for event %v %v %v at offset %v", errNoRelevantStatsFound, exch, a, p, ev.GetOffset())
-}
-
-func applyEventAtOffset(ev common.EventHandler, lookup *CurrencyPairStatistic, i int) error {
+func applyEventAtOffset(ev common.Event, data *DataAtOffset) error {
 	switch t := ev.(type) {
-	case common.DataEventHandler:
-		lookup.Events[i].DataEvent = t
+	case kline.Event:
+		// using kline.Event as signal.Event also matches data.Event
+		if data.DataEvent != nil && data.DataEvent != ev {
+			return fmt.Errorf("kline event %w %v %v %v %v", ErrAlreadyProcessed, ev.GetExchange(), ev.GetAssetType(), ev.Pair(), ev.GetOffset())
+		}
+		data.DataEvent = t
 	case signal.Event:
-		lookup.Events[i].SignalEvent = t
+		if data.SignalEvent != nil {
+			return fmt.Errorf("signal event %w %v %v %v %v", ErrAlreadyProcessed, ev.GetExchange(), ev.GetAssetType(), ev.Pair(), ev.GetOffset())
+		}
+		data.SignalEvent = t
 	case order.Event:
-		lookup.Events[i].OrderEvent = t
+		if data.OrderEvent != nil {
+			return fmt.Errorf("order event %w %v %v %v %v", ErrAlreadyProcessed, ev.GetExchange(), ev.GetAssetType(), ev.Pair(), ev.GetOffset())
+		}
+		data.OrderEvent = t
 	case fill.Event:
-		lookup.Events[i].FillEvent = t
+		if data.FillEvent != nil {
+			return fmt.Errorf("fill event %w %v %v %v %v", ErrAlreadyProcessed, ev.GetExchange(), ev.GetAssetType(), ev.Pair(), ev.GetOffset())
+		}
+		data.FillEvent = t
 	default:
 		return fmt.Errorf("unknown event type received: %v", ev)
 	}
-	lookup.Events[i].Time = ev.GetTime()
-	lookup.Events[i].ClosePrice = ev.GetClosePrice()
-	lookup.Events[i].Offset = ev.GetOffset()
+	data.Time = ev.GetTime()
+	data.ClosePrice = ev.GetClosePrice()
 
 	return nil
 }
@@ -120,7 +138,12 @@ func (s *Statistic) AddHoldingsForTime(h *holdings.Holding) error {
 	if s.ExchangeAssetPairStatistics == nil {
 		return errExchangeAssetPairStatsUnset
 	}
-	lookup := s.ExchangeAssetPairStatistics[h.Exchange][h.Asset][h.Pair]
+	lookup := s.ExchangeAssetPairStatistics[key.ExchangePairAsset{
+		Exchange: h.Exchange,
+		Base:     h.Pair.Base.Item,
+		Quote:    h.Pair.Quote.Item,
+		Asset:    h.Asset,
+	}]
 	if lookup == nil {
 		return fmt.Errorf("%w for %v %v %v to set holding event", errCurrencyStatisticsUnset, h.Exchange, h.Asset, h.Pair)
 	}
@@ -136,14 +159,19 @@ func (s *Statistic) AddHoldingsForTime(h *holdings.Holding) error {
 // AddPNLForTime stores PNL data for tracking purposes
 func (s *Statistic) AddPNLForTime(pnl *portfolio.PNLSummary) error {
 	if pnl == nil {
-		return fmt.Errorf("%w requires PNL", common.ErrNilArguments)
+		return fmt.Errorf("%w requires PNL", gctcommon.ErrNilPointer)
 	}
 	if s.ExchangeAssetPairStatistics == nil {
 		return errExchangeAssetPairStatsUnset
 	}
-	lookup := s.ExchangeAssetPairStatistics[pnl.Exchange][pnl.Item][pnl.Pair]
+	lookup := s.ExchangeAssetPairStatistics[key.ExchangePairAsset{
+		Exchange: pnl.Exchange,
+		Base:     pnl.Pair.Base.Item,
+		Quote:    pnl.Pair.Quote.Item,
+		Asset:    pnl.Asset,
+	}]
 	if lookup == nil {
-		return fmt.Errorf("%w for %v %v %v to set pnl", errCurrencyStatisticsUnset, pnl.Exchange, pnl.Item, pnl.Pair)
+		return fmt.Errorf("%w for %v %v %v to set pnl", errCurrencyStatisticsUnset, pnl.Exchange, pnl.Asset, pnl.Pair)
 	}
 	for i := len(lookup.Events) - 1; i >= 0; i-- {
 		if lookup.Events[i].Offset == pnl.Offset {
@@ -152,13 +180,16 @@ func (s *Statistic) AddPNLForTime(pnl *portfolio.PNLSummary) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("%v %v %v %w %v", pnl.Exchange, pnl.Item, pnl.Pair, errNoDataAtOffset, pnl.Offset)
+	return fmt.Errorf("%v %v %v %w %v", pnl.Exchange, pnl.Asset, pnl.Pair, errNoDataAtOffset, pnl.Offset)
 }
 
 // AddComplianceSnapshotForTime adds the compliance snapshot to the statistics at the time period
-func (s *Statistic) AddComplianceSnapshotForTime(c compliance.Snapshot, e fill.Event) error {
+func (s *Statistic) AddComplianceSnapshotForTime(c *compliance.Snapshot, e common.Event) error {
+	if c == nil {
+		return fmt.Errorf("%w compliance snapshot", common.ErrNilEvent)
+	}
 	if e == nil {
-		return common.ErrNilEvent
+		return fmt.Errorf("%w fill event", common.ErrNilEvent)
 	}
 	if s.ExchangeAssetPairStatistics == nil {
 		return errExchangeAssetPairStatsUnset
@@ -166,13 +197,18 @@ func (s *Statistic) AddComplianceSnapshotForTime(c compliance.Snapshot, e fill.E
 	exch := e.GetExchange()
 	a := e.GetAssetType()
 	p := e.Pair()
-	lookup := s.ExchangeAssetPairStatistics[exch][a][p]
+	lookup := s.ExchangeAssetPairStatistics[key.ExchangePairAsset{
+		Exchange: exch,
+		Base:     p.Base.Item,
+		Quote:    p.Quote.Item,
+		Asset:    a,
+	}]
 	if lookup == nil {
 		return fmt.Errorf("%w for %v %v %v to set compliance snapshot", errCurrencyStatisticsUnset, exch, a, p)
 	}
 	for i := len(lookup.Events) - 1; i >= 0; i-- {
 		if lookup.Events[i].Offset == e.GetOffset() {
-			lookup.Events[i].Transactions = c
+			lookup.Events[i].ComplianceSnapshot = c
 			return nil
 		}
 	}
@@ -182,47 +218,53 @@ func (s *Statistic) AddComplianceSnapshotForTime(c compliance.Snapshot, e fill.E
 // CalculateAllResults calculates the statistics of all exchange asset pair holdings,
 // orders, ratios and drawdowns
 func (s *Statistic) CalculateAllResults() error {
-	log.Info(common.Statistics, "Calculating backtesting results")
+	log.Infoln(common.Statistics, "Calculating backtesting results")
 	s.PrintAllEventsChronologically()
 	currCount := 0
-	var finalResults []FinalResultsHolder
+	finalResults := make([]FinalResultsHolder, 0, len(s.ExchangeAssetPairStatistics))
 	var err error
-	for exchangeName, exchangeMap := range s.ExchangeAssetPairStatistics {
-		for assetItem, assetMap := range exchangeMap {
-			for pair, stats := range assetMap {
-				currCount++
-				last := stats.Events[len(stats.Events)-1]
-				if last.PNL != nil {
-					s.HasCollateral = true
-				}
-				err = stats.CalculateResults(s.RiskFreeRate)
-				if err != nil {
-					log.Error(common.Statistics, err)
-				}
-				stats.FinalHoldings = last.Holdings
-				stats.InitialHoldings = stats.Events[0].Holdings
-				stats.FinalOrders = last.Transactions
-				s.StartDate = stats.Events[0].Time
-				s.EndDate = last.Time
-				stats.PrintResults(exchangeName, assetItem, pair, s.FundManager.IsUsingExchangeLevelFunding())
+	for mapKey, stats := range s.ExchangeAssetPairStatistics {
+		currCount++
+		last := stats.Events[len(stats.Events)-1]
+		if last.PNL != nil {
+			s.HasCollateral = true
+		}
+		err = stats.CalculateResults(s.RiskFreeRate)
+		if err != nil {
+			log.Errorln(common.Statistics, err)
+		}
+		stats.FinalHoldings = last.Holdings
+		stats.InitialHoldings = stats.Events[0].Holdings
+		if last.ComplianceSnapshot == nil {
+			return errMissingSnapshots
+		}
+		stats.FinalOrders = *last.ComplianceSnapshot
+		s.StartDate = stats.Events[0].Time
+		s.EndDate = last.Time
+		cp := currency.NewPair(mapKey.Base.Currency(), mapKey.Quote.Currency())
+		err = stats.PrintResults(mapKey.Exchange, mapKey.Asset, cp, s.FundManager.IsUsingExchangeLevelFunding())
+		if err != nil {
+			return err
+		}
 
-				finalResults = append(finalResults, FinalResultsHolder{
-					Exchange:         exchangeName,
-					Asset:            assetItem,
-					Pair:             pair,
-					MaxDrawdown:      stats.MaxDrawdown,
-					MarketMovement:   stats.MarketMovement,
-					StrategyMovement: stats.StrategyMovement,
-				})
-				s.TotalLongOrders += stats.LongOrders
-				s.TotalShortOrders += stats.ShortOrders
-				s.TotalBuyOrders += stats.BuyOrders
-				s.TotalSellOrders += stats.SellOrders
-				s.TotalOrders += stats.TotalOrders
-				if stats.ShowMissingDataWarning {
-					s.WasAnyDataMissing = true
-				}
-			}
+		finalResults = append(finalResults, FinalResultsHolder{
+			Exchange:         mapKey.Exchange,
+			Asset:            mapKey.Asset,
+			Pair:             cp,
+			MaxDrawdown:      stats.MaxDrawdown,
+			MarketMovement:   stats.MarketMovement,
+			StrategyMovement: stats.StrategyMovement,
+		})
+		if mapKey.Asset.IsFutures() {
+			s.TotalLongOrders += stats.BuyOrders
+			s.TotalShortOrders += stats.SellOrders
+		} else {
+			s.TotalBuyOrders += stats.BuyOrders
+			s.TotalSellOrders += stats.SellOrders
+		}
+		s.TotalOrders += stats.TotalOrders
+		if stats.ShowMissingDataWarning {
+			s.WasAnyDataMissing = true
 		}
 	}
 	s.FundingStatistics, err = CalculateFundingStatistics(s.FundManager, s.ExchangeAssetPairStatistics, s.RiskFreeRate, s.CandleInterval)
@@ -298,12 +340,8 @@ func (s *Statistic) SetStrategyName(name string) {
 // Serialise outputs the Statistic struct in json
 func (s *Statistic) Serialise() (string, error) {
 	s.CurrencyStatistics = nil
-	for _, exchangeMap := range s.ExchangeAssetPairStatistics {
-		for _, assetMap := range exchangeMap {
-			for _, stats := range assetMap {
-				s.CurrencyStatistics = append(s.CurrencyStatistics, stats)
-			}
-		}
+	for _, stats := range s.ExchangeAssetPairStatistics {
+		s.CurrencyStatistics = append(s.CurrencyStatistics, stats)
 	}
 
 	resp, err := json.MarshalIndent(s, "", " ")

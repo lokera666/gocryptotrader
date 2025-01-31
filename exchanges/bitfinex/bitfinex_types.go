@@ -10,7 +10,15 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 )
 
-var errTypeAssert = errors.New("type assertion failed")
+var (
+	errSetCannotBeEmpty        = errors.New("set cannot be empty")
+	errNoSeqNo                 = errors.New("no sequence number")
+	errParamNotAllowed         = errors.New("param not allowed")
+	errParsingWSField          = errors.New("error parsing WS field")
+	errTickerInvalidSymbol     = errors.New("invalid ticker symbol")
+	errTickerInvalidResp       = errors.New("invalid ticker response format")
+	errTickerInvalidFieldCount = errors.New("invalid ticker response field count")
+)
 
 // AccountV2Data stores account v2 data
 type AccountV2Data struct {
@@ -66,7 +74,7 @@ func (a *acceptableMethodStore) lookup(curr currency.Code) []string {
 	defer a.m.RUnlock()
 	var methods []string
 	for k, v := range a.a {
-		if common.StringDataCompareInsensitive(v, curr.Upper().String()) {
+		if common.StringSliceCompareInsensitive(v, curr.Upper().String()) {
 			methods = append(methods, k)
 		}
 	}
@@ -216,17 +224,6 @@ type Lends struct {
 	AmountLent float64 `json:"amount_lent,string"`
 	AmountUsed float64 `json:"amount_used,string"`
 	Timestamp  int64   `json:"timestamp"`
-}
-
-// SymbolDetails holds currency pair information
-type SymbolDetails struct {
-	Pair             string  `json:"pair"`
-	PricePrecision   int     `json:"price_precision"`
-	InitialMargin    float64 `json:"initial_margin,string"`
-	MinimumMargin    float64 `json:"minimum_margin,string"`
-	MaximumOrderSize float64 `json:"maximum_order_size,string"`
-	MinimumOrderSize float64 `json:"minimum_order_size,string"`
-	Expiration       string  `json:"expiration"`
 }
 
 // AccountInfoFull adds the error message to Account info
@@ -415,7 +412,7 @@ type BalanceHistory struct {
 // MovementHistory holds deposit and withdrawal history data
 type MovementHistory struct {
 	ID               int64   `json:"id"`
-	TxID             int64   `json:"txid"`
+	TxID             string  `json:"txid"`
 	Currency         string  `json:"currency"`
 	Method           string  `json:"method"`
 	Type             string  `json:"withdrawal"`
@@ -423,8 +420,8 @@ type MovementHistory struct {
 	Description      string  `json:"description"`
 	Address          string  `json:"address"`
 	Status           string  `json:"status"`
-	Timestamp        string  `json:"timestamp"`
-	TimestampCreated string  `json:"timestamp_created"`
+	Timestamp        float64 `json:"timestamp"`
+	TimestampCreated float64 `json:"timestamp_created"`
 	Fee              float64 `json:"fee"`
 }
 
@@ -481,12 +478,6 @@ type Fee struct {
 	Currency  string
 	TakerFees float64
 	MakerFees float64
-}
-
-// WebsocketChanInfo holds websocket channel information
-type WebsocketChanInfo struct {
-	Channel string
-	Pair    string
 }
 
 // WebsocketBook holds booking information
@@ -627,6 +618,7 @@ const (
 	publicBitfinexWebsocketEndpoint        = "wss://api-pub.bitfinex.com/ws/2"
 	pong                                   = "pong"
 	wsHeartbeat                            = "hb"
+	wsChecksum                             = "cs"
 	wsPositionSnapshot                     = "ps"
 	wsPositionNew                          = "pn"
 	wsPositionUpdate                       = "pu"
@@ -670,6 +662,12 @@ const (
 	wsTicker                               = "ticker"
 	wsTrades                               = "trades"
 	wsError                                = "error"
+	wsEventSubscribed                      = "subscribed"
+	wsEventUnsubscribed                    = "unsubscribed"
+	wsEventAuth                            = "auth"
+	wsEventError                           = "error"
+	wsEventConf                            = "conf"
+	wsEventInfo                            = "info"
 )
 
 // WsAuthRequest container for WS auth request
@@ -833,4 +831,24 @@ type WsCancelOfferRequest struct {
 // WsCancelAllOrdersRequest cancel all orders request
 type WsCancelAllOrdersRequest struct {
 	All int64 `json:"all"`
+}
+
+// CancelMultiOrderResponse holds v2 cancelled order data
+type CancelMultiOrderResponse struct {
+	OrderID           string
+	ClientOrderID     string
+	GroupOrderID      string
+	Symbol            string
+	CreatedTime       time.Time
+	UpdatedTime       time.Time
+	Amount            float64
+	OriginalAmount    float64
+	OrderType         string
+	OriginalOrderType string
+	OrderFlags        string
+	OrderStatus       string
+	Price             float64
+	AveragePrice      float64
+	TrailingPrice     float64
+	AuxLimitPrice     float64
 }

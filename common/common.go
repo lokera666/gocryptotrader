@@ -2,34 +2,43 @@ package common
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
-	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/thrasher-corp/gocryptotrader/common/file"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
 const (
-	// SimpleTimeFormat a common, but non-implemented time format in golang
-	SimpleTimeFormat = "2006-01-02 15:04:05"
 	// SimpleTimeFormatWithTimezone a common, but non-implemented time format in golang
-	SimpleTimeFormatWithTimezone = "2006-01-02 15:04:05 MST"
+	SimpleTimeFormatWithTimezone = time.DateTime + " MST"
 	// GctExt is the extension for GCT Tengo script files
 	GctExt         = ".gct"
 	defaultTimeout = time.Second * 15
+)
+
+// Strings representing the full lower, upper case English character alphabet and base-10 numbers for generating a random string.
+const (
+	SmallLetters     = "abcdefghijklmnopqrstuvwxyz"
+	CapitalLetters   = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	NumberCharacters = "0123456789"
 )
 
 var (
@@ -42,37 +51,32 @@ var (
 	_HTTPClient    *http.Client
 	_HTTPUserAgent string
 	m              sync.RWMutex
-	// ErrNotYetImplemented defines a common error across the code base that
-	// alerts of a function that has not been completed or tied into main code
-	ErrNotYetImplemented = errors.New("not yet implemented")
-	// ErrFunctionNotSupported defines a standardised error for an unsupported
-	// wrapper function by an API
-	ErrFunctionNotSupported  = errors.New("unsupported wrapper function")
-	errInvalidCryptoCurrency = errors.New("invalid crypto currency")
-	// ErrDateUnset is an error for start end check calculations
-	ErrDateUnset = errors.New("date unset")
-	// ErrStartAfterEnd is an error for start end check calculations
-	ErrStartAfterEnd = errors.New("start date after end date")
-	// ErrStartEqualsEnd is an error for start end check calculations
-	ErrStartEqualsEnd = errors.New("start date equals end date")
-	// ErrStartAfterTimeNow is an error for start end check calculations
-	ErrStartAfterTimeNow = errors.New("start date is after current time")
-	// ErrNilPointer defines an error for a nil pointer
-	ErrNilPointer = errors.New("nil pointer")
-	// ErrCannotCalculateOffline is returned when a request wishes to calculate
-	// something offline, but has an online requirement
-	ErrCannotCalculateOffline = errors.New("cannot calculate offline")
-	// ErrNoResponse is returned when a response has no entries/is empty
-	// when one is expected
-	ErrNoResponse = errors.New("no response")
+	zeroValueUnix  = time.Unix(0, 0)
+)
 
+// Public common Errors
+var (
+	ErrNotYetImplemented      = errors.New("not yet implemented")
+	ErrFunctionNotSupported   = errors.New("unsupported wrapper function")
+	errInvalidCryptoCurrency  = errors.New("invalid crypto currency")
+	ErrDateUnset              = errors.New("date unset")
+	ErrStartAfterEnd          = errors.New("start date after end date")
+	ErrStartEqualsEnd         = errors.New("start date equals end date")
+	ErrStartAfterTimeNow      = errors.New("start date is after current time")
+	ErrNilPointer             = errors.New("nil pointer")
+	ErrEmptyParams            = errors.New("empty parameters")
+	ErrCannotCalculateOffline = errors.New("cannot calculate offline, unsupported")
+	ErrNoResponse             = errors.New("no response")
+	ErrTypeAssertFailure      = errors.New("type assert failure")
+	ErrUnknownError           = errors.New("unknown error")
+	ErrGettingField           = errors.New("error getting field")
+	ErrSettingField           = errors.New("error setting field")
+)
+
+var (
 	errCannotSetInvalidTimeout = errors.New("cannot set new HTTP client with timeout that is equal or less than 0")
 	errUserAgentInvalid        = errors.New("cannot set invalid user agent")
 	errHTTPClientInvalid       = errors.New("custom http client cannot be nil")
-
-	zeroValueUnix = time.Unix(0, 0)
-	// ErrTypeAssertFailure defines an error when type assertion fails
-	ErrTypeAssertFailure = errors.New("type assert failure")
 )
 
 // MatchesEmailPattern ensures that the string is an email address by regexp check
@@ -134,66 +138,43 @@ func NewHTTPClientWithTimeout(t time.Duration) *http.Client {
 	return h
 }
 
-// StringSliceDifference concatenates slices together based on its index and
-// returns an individual string array
-func StringSliceDifference(slice1, slice2 []string) []string {
-	var diff []string
-	for i := 0; i < 2; i++ {
-		for _, s1 := range slice1 {
-			found := false
-			for _, s2 := range slice2 {
-				if s1 == s2 {
-					found = true
-					break
-				}
-			}
-			if !found {
-				diff = append(diff, s1)
-			}
-		}
-		if i == 0 {
-			slice1, slice2 = slice2, slice1
+// SliceDifference returns the elements that are in slice1 or slice2 but not in both
+func SliceDifference[T comparable](slice1, slice2 []T) []T {
+	diff := make([]T, 0, len(slice1)+len(slice2))
+	for x := range slice1 {
+		if !slices.Contains(slice2, slice1[x]) {
+			diff = append(diff, slice1[x])
+			continue
 		}
 	}
-	return diff
-}
-
-// StringDataContains checks the substring array with an input and returns a bool
-func StringDataContains(haystack []string, needle string) bool {
-	data := strings.Join(haystack, ",")
-	return strings.Contains(data, needle)
-}
-
-// StringDataCompare data checks the substring array with an input and returns a bool
-func StringDataCompare(haystack []string, needle string) bool {
-	for x := range haystack {
-		if haystack[x] == needle {
-			return true
+	for x := range slice2 {
+		if !slices.Contains(slice1, slice2[x]) {
+			diff = append(diff, slice2[x])
 		}
 	}
-	return false
+	return slices.Clip(diff)
 }
 
-// StringDataCompareInsensitive data checks the substring array with an input and returns
-// a bool irrespective of lower or upper case strings
-func StringDataCompareInsensitive(haystack []string, needle string) bool {
-	for x := range haystack {
-		if strings.EqualFold(haystack[x], needle) {
-			return true
-		}
-	}
-	return false
+// StringSliceContains returns whether case sensitive needle is contained within haystack
+func StringSliceContains(haystack []string, needle string) bool {
+	return slices.ContainsFunc(haystack, func(s string) bool {
+		return strings.Contains(s, needle)
+	})
 }
 
-// StringDataContainsInsensitive checks the substring array with an input and returns
-// a bool irrespective of lower or upper case strings
-func StringDataContainsInsensitive(haystack []string, needle string) bool {
-	for _, data := range haystack {
-		if strings.Contains(strings.ToUpper(data), strings.ToUpper(needle)) {
-			return true
-		}
-	}
-	return false
+// StringSliceCompareInsensitive returns whether case insensitive needle exists within haystack
+func StringSliceCompareInsensitive(haystack []string, needle string) bool {
+	return slices.ContainsFunc(haystack, func(s string) bool {
+		return strings.EqualFold(s, needle)
+	})
+}
+
+// StringSliceContainsInsensitive returns whether case insensitive needle is contained within haystack
+func StringSliceContainsInsensitive(haystack []string, needle string) bool {
+	needleUpper := strings.ToUpper(needle)
+	return slices.ContainsFunc(haystack, func(s string) bool {
+		return strings.Contains(strings.ToUpper(s), needleUpper)
+	})
 }
 
 // IsEnabled takes in a boolean param  and returns a string if it is enabled
@@ -389,63 +370,178 @@ func ChangePermission(directory string) error {
 	})
 }
 
-// SplitStringSliceByLimit splits a slice of strings into slices by input limit and returns a slice of slice of strings
-func SplitStringSliceByLimit(in []string, limit uint) [][]string {
-	var stringSlice []string
-	sliceSlice := make([][]string, 0, len(in)/int(limit)+1)
-	for len(in) >= int(limit) {
-		stringSlice, in = in[:limit], in[limit:]
-		sliceSlice = append(sliceSlice, stringSlice)
+// AddPaddingOnUpperCase adds padding to a string when detecting an upper case letter. If
+// there are multiple upper case items like `ThisIsHTTPExample`, it will only
+// pad between like this `This Is HTTP Example`.
+func AddPaddingOnUpperCase(s string) string {
+	if s == "" {
+		return ""
 	}
-	if len(in) > 0 {
-		sliceSlice = append(sliceSlice, in)
+	var result []string
+	left := 0
+	for x := range s {
+		if x == 0 {
+			continue
+		}
+
+		if unicode.IsUpper(rune(s[x])) {
+			if !unicode.IsUpper(rune(s[x-1])) {
+				result = append(result, s[left:x])
+				left = x
+			}
+		} else if x > 1 && unicode.IsUpper(rune(s[x-1])) {
+			if s[left:x-1] == "" {
+				continue
+			}
+			result = append(result, s[left:x-1])
+			left = x - 1
+		}
 	}
-	return sliceSlice
+	result = append(result, s[left:])
+	return strings.Join(result, " ")
 }
 
-// InArray checks if _val_ belongs to _array_
-func InArray(val, array interface{}) (exists bool, index int) {
-	exists = false
-	index = -1
-	if array == nil {
-		return
+// fmtError holds a formatted msg and the errors which formatted it
+type fmtError struct {
+	errs []error
+	msg  string
+}
+
+// multiError holds errors as a slice
+type multiError struct {
+	errs []error
+}
+
+type unwrappable interface {
+	Unwrap() []error
+	Error() string
+}
+
+// AppendError appends an error to a list of exesting errors
+// Either argument may be:
+// * A vanilla error
+// * An error implementing Unwrap() []error e.g. fmt.Errorf("%w: %w")
+// * nil
+// The result will be an error which may be a multiError if multipleErrors were found
+func AppendError(original, incoming error) error {
+	if incoming == nil {
+		return original
 	}
-	switch reflect.TypeOf(array).Kind() {
-	case reflect.Array, reflect.Slice:
-		s := reflect.ValueOf(array)
-		for i := 0; i < s.Len(); i++ {
-			if reflect.DeepEqual(val, s.Index(i).Interface()) {
-				index = i
-				exists = true
-				return
+	if original == nil {
+		return incoming
+	}
+	if u, ok := incoming.(unwrappable); ok {
+		incoming = &fmtError{
+			errs: u.Unwrap(),
+			msg:  u.Error(),
+		}
+	}
+	switch v := original.(type) {
+	case *multiError:
+		v.errs = append(v.errs, incoming)
+		return v
+	case unwrappable:
+		original = &fmtError{
+			errs: v.Unwrap(),
+			msg:  v.Error(),
+		}
+	}
+	return &multiError{
+		errs: append([]error{original}, incoming),
+	}
+}
+
+func (e *fmtError) Error() string {
+	return e.msg
+}
+
+func (e *fmtError) Unwrap() []error {
+	return e.errs
+}
+
+// Error displays all errors comma separated
+func (e *multiError) Error() string {
+	allErrors := make([]string, len(e.errs))
+	for x := range e.errs {
+		allErrors[x] = e.errs[x].Error()
+	}
+	return strings.Join(allErrors, ", ")
+}
+
+// Unwrap returns all of the errors in the multiError
+func (e *multiError) Unwrap() []error {
+	errs := make([]error, 0, len(e.errs))
+	for _, e := range e.errs {
+		switch v := e.(type) {
+		case unwrappable:
+			errs = append(errs, unwrapDeep(v)...)
+		default:
+			errs = append(errs, v)
+		}
+	}
+	return errs
+}
+
+// unwrapDeep walks down a stack of nested fmt.Errorf("%w: %w") errors
+// This is necessary since fmt.wrapErrors doesn't flatten the error slices
+func unwrapDeep(err unwrappable) []error {
+	var n []error
+	for _, e := range err.Unwrap() {
+		if u, ok := e.(unwrappable); ok {
+			n = append(n, u.Unwrap()...)
+		} else {
+			n = append(n, e)
+		}
+	}
+	return n
+}
+
+// ExcludeError returns a new error excluding any errors matching excl
+// For a standard error it will either return the error unchanged or nil
+// For an error which implements Unwrap() []error it will remove any errors matching excl and return the remaining errors or nil
+// Any non-error messages and formatting from fmt.Errorf will be lost; This function is written for conditions
+func ExcludeError(err, excl error) error {
+	if u, ok := err.(unwrappable); ok {
+		var n error
+		for _, e := range unwrapDeep(u) {
+			if !errors.Is(e, excl) {
+				n = AppendError(n, e)
 			}
+		}
+		return n
+	}
+	if errors.Is(err, excl) {
+		return nil
+	}
+	return err
+}
+
+// ErrorCollector allows collecting a stream of errors from concurrent go routines
+// Users should call e.Wg.Done and send errors to e.C
+type ErrorCollector struct {
+	C  chan error
+	Wg sync.WaitGroup
+}
+
+// CollectErrors returns an ErrorCollector with WaitGroup and Channel buffer set to n
+func CollectErrors(n int) *ErrorCollector {
+	e := &ErrorCollector{
+		C: make(chan error, n),
+	}
+	e.Wg.Add(n)
+	return e
+}
+
+// Collect runs waits for e.Wg to be Done, closes the error channel, and return a error collection
+func (e *ErrorCollector) Collect() (errs error) {
+	e.Wg.Wait()
+	close(e.C)
+	for err := range e.C {
+		if err != nil {
+			errs = AppendError(errs, err)
 		}
 	}
 	return
-}
-
-// Errors defines multiple errors
-type Errors []error
-
-// Error implements error interface
-func (e Errors) Error() string {
-	if len(e) == 0 {
-		return ""
-	}
-	var r string
-	for i := range e {
-		r += e[i].Error() + ", "
-	}
-	return r[:len(r)-2]
-}
-
-// Unwrap implements interface behaviour for errors.Is() matching NOTE: only
-// returns first element.
-func (e Errors) Unwrap() error {
-	if len(e) == 0 {
-		return nil
-	}
-	return e[0]
 }
 
 // StartEndTimeCheck provides some basic checks which occur
@@ -457,21 +553,97 @@ func StartEndTimeCheck(start, end time.Time) error {
 	if end.IsZero() || end.Equal(zeroValueUnix) {
 		return fmt.Errorf("end %w", ErrDateUnset)
 	}
-	if start.After(time.Now()) {
-		return ErrStartAfterTimeNow
-	}
 	if start.After(end) {
 		return ErrStartAfterEnd
 	}
 	if start.Equal(end) {
 		return ErrStartEqualsEnd
 	}
+	if start.After(time.Now()) {
+		return ErrStartAfterTimeNow
+	}
 
 	return nil
 }
 
-// GetAssertError returns additional information for when an assertion failure
+// GenerateRandomString generates a random string provided a length and list of Character types { SmallLetters, CapitalLetters, NumberCharacters}.
+// if no characters are provided, the function uses a NumberCharacters(string of numeric characters).
+func GenerateRandomString(length uint, characters ...string) (string, error) {
+	if length == 0 {
+		return "", errors.New("invalid length, length must be non-zero positive integer")
+	}
+	b := make([]byte, length)
+	chars := strings.Replace(strings.Join(characters, ""), " ", "", -1)
+	if chars == "" && len(characters) != 0 {
+		return "", errors.New("invalid characters, character must not be empty")
+	} else if chars == "" {
+		chars = NumberCharacters
+	}
+	for i := range b {
+		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+		if err != nil {
+			return "", err
+		}
+		n := nBig.Int64()
+		b[i] = chars[n]
+	}
+	return string(b), nil
+}
+
+// GetTypeAssertError returns additional information for when an assertion failure
 // occurs.
-func GetAssertError(required string, received interface{}) error {
-	return fmt.Errorf("%w from %T to %s", ErrTypeAssertFailure, received, required)
+// fieldDescription is an optional way to return what the affected field was for
+func GetTypeAssertError(required string, received interface{}, fieldDescription ...string) error {
+	var description string
+	if len(fieldDescription) > 0 {
+		description = " for: " + strings.Join(fieldDescription, ", ")
+	}
+	return fmt.Errorf("%w from %T to %s%s", ErrTypeAssertFailure, received, required, description)
+}
+
+// Batch takes a slice type and converts it into a slice of containing slices of length batchSize, and any remainder in the final batch
+// batchSize <= 0 will return the entire input slice in one batch
+func Batch[S ~[]E, E any](blobs S, batchSize int) []S {
+	if len(blobs) == 0 {
+		return []S{}
+	}
+	blobs = slices.Clone(blobs)
+	if batchSize <= 0 {
+		return []S{blobs}
+	}
+	i := 0
+	batches := make([]S, (len(blobs)+batchSize-1)/batchSize)
+	for batchSize < len(blobs) {
+		blobs, batches[i] = blobs[batchSize:], blobs[:batchSize:batchSize]
+		i++
+	}
+	if len(blobs) > 0 {
+		batches[i] = blobs
+	}
+	return batches
+}
+
+// SortStrings takes a slice of fmt.Stringer implementers and returns a new ascending sorted slice
+func SortStrings[S ~[]E, E fmt.Stringer](x S) S {
+	n := slices.Clone(x)
+	slices.SortFunc(n, func(a, b E) int {
+		return strings.Compare(a.String(), b.String())
+	})
+	return n
+}
+
+// Counter is a thread-safe counter.
+type Counter struct {
+	n int64 // privatised so you can't use counter as a value type
+}
+
+// IncrementAndGet returns the next count after incrementing.
+func (c *Counter) IncrementAndGet() int64 {
+	newID := atomic.AddInt64(&c.n, 1)
+	// Handle overflow by resetting the counter to 1 if it becomes negative
+	if newID < 0 {
+		atomic.StoreInt64(&c.n, 1)
+		return 1
+	}
+	return newID
 }

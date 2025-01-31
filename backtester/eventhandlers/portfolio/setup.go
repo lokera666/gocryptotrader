@@ -5,11 +5,12 @@ import (
 
 	"github.com/shopspring/decimal"
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventhandlers/exchange"
-	"github.com/thrasher-corp/gocryptotrader/backtester/eventhandlers/portfolio/compliance"
+	"github.com/thrasher-corp/gocryptotrader/backtester/eventhandlers/portfolio/holdings"
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventhandlers/portfolio/risk"
-	"github.com/thrasher-corp/gocryptotrader/currency"
+	gctcommon "github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/common/key"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
-	gctorder "github.com/thrasher-corp/gocryptotrader/exchanges/order"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/futures"
 )
 
 // Setup creates a portfolio manager instance and sets private fields
@@ -32,12 +33,19 @@ func Setup(sh SizeHandler, r risk.Handler, riskFreeRate decimal.Decimal) (*Portf
 }
 
 // Reset returns the portfolio manager to its default state
-func (p *Portfolio) Reset() {
-	p.exchangeAssetPairSettings = nil
+func (p *Portfolio) Reset() error {
+	if p == nil {
+		return gctcommon.ErrNilPointer
+	}
+	p.exchangeAssetPairPortfolioSettings = make(map[key.ExchangePairAsset]*Settings)
+	p.riskFreeRate = decimal.Zero
+	p.sizeManager = nil
+	p.riskManager = nil
+	return nil
 }
 
-// SetupCurrencySettingsMap ensures a map is created and no panics happen
-func (p *Portfolio) SetupCurrencySettingsMap(setup *exchange.Settings) error {
+// SetCurrencySettingsMap ensures a map is created and no panics happen
+func (p *Portfolio) SetCurrencySettingsMap(setup *exchange.Settings) error {
 	if setup == nil {
 		return errNoPortfolioSettings
 	}
@@ -50,32 +58,28 @@ func (p *Portfolio) SetupCurrencySettingsMap(setup *exchange.Settings) error {
 	if setup.Pair.IsEmpty() {
 		return errCurrencyPairUnset
 	}
-	if p.exchangeAssetPairSettings == nil {
-		p.exchangeAssetPairSettings = make(map[string]map[asset.Item]map[currency.Pair]*Settings)
+
+	if p.exchangeAssetPairPortfolioSettings == nil {
+		p.exchangeAssetPairPortfolioSettings = make(map[key.ExchangePairAsset]*Settings)
 	}
 	name := strings.ToLower(setup.Exchange.GetName())
-	if p.exchangeAssetPairSettings[name] == nil {
-		p.exchangeAssetPairSettings[name] = make(map[asset.Item]map[currency.Pair]*Settings)
-	}
-	if p.exchangeAssetPairSettings[name][setup.Asset] == nil {
-		p.exchangeAssetPairSettings[name][setup.Asset] = make(map[currency.Pair]*Settings)
-	}
-	if _, ok := p.exchangeAssetPairSettings[name][setup.Asset][setup.Pair]; ok {
-		return nil
-	}
-	collateralCurrency, _, err := setup.Exchange.GetCollateralCurrencyForContract(setup.Asset, setup.Pair)
-	if err != nil {
-		return err
-	}
+
 	settings := &Settings{
+		Exchange:          setup.Exchange,
+		exchangeName:      name,
+		assetType:         setup.Asset,
+		pair:              setup.Pair,
 		BuySideSizing:     setup.BuySide,
 		SellSideSizing:    setup.SellSide,
 		Leverage:          setup.Leverage,
-		Exchange:          setup.Exchange,
-		ComplianceManager: compliance.Manager{},
+		HoldingsSnapshots: make(map[int64]*holdings.Holding),
 	}
 	if setup.Asset.IsFutures() {
-		futureTrackerSetup := &gctorder.MultiPositionTrackerSetup{
+		collateralCurrency, _, err := setup.Exchange.GetCollateralCurrencyForContract(setup.Asset, setup.Pair)
+		if err != nil {
+			return err
+		}
+		futureTrackerSetup := &futures.MultiPositionTrackerSetup{
 			Exchange:                  name,
 			Asset:                     setup.Asset,
 			Pair:                      setup.Pair,
@@ -87,13 +91,18 @@ func (p *Portfolio) SetupCurrencySettingsMap(setup *exchange.Settings) error {
 		if setup.UseExchangePNLCalculation {
 			futureTrackerSetup.ExchangePNLCalculation = setup.Exchange
 		}
-		var tracker *gctorder.MultiPositionTracker
-		tracker, err = gctorder.SetupMultiPositionTracker(futureTrackerSetup)
+		var tracker *futures.MultiPositionTracker
+		tracker, err = futures.SetupMultiPositionTracker(futureTrackerSetup)
 		if err != nil {
 			return err
 		}
 		settings.FuturesTracker = tracker
 	}
-	p.exchangeAssetPairSettings[name][setup.Asset][setup.Pair] = settings
+	p.exchangeAssetPairPortfolioSettings[key.ExchangePairAsset{
+		Exchange: name,
+		Base:     setup.Pair.Base.Item,
+		Quote:    setup.Pair.Quote.Item,
+		Asset:    setup.Asset,
+	}] = settings
 	return nil
 }

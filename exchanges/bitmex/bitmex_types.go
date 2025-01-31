@@ -137,7 +137,7 @@ type Instrument struct {
 	FairPrice                      float64   `json:"fairPrice"`
 	Front                          string    `json:"front"`
 	FundingBaseSymbol              string    `json:"fundingBaseSymbol"`
-	FundingInterval                string    `json:"fundingInterval"`
+	FundingInterval                time.Time `json:"fundingInterval"`
 	FundingPremiumSymbol           string    `json:"fundingPremiumSymbol"`
 	FundingQuoteSymbol             string    `json:"fundingQuoteSymbol"`
 	FundingRate                    float64   `json:"fundingRate"`
@@ -163,18 +163,18 @@ type Instrument struct {
 	LimitDownPrice                 float64   `json:"limitDownPrice"`
 	LimitUpPrice                   float64   `json:"limitUpPrice"`
 	Listing                        string    `json:"listing"`
-	LotSize                        int64     `json:"lotSize"`
+	LotSize                        float64   `json:"lotSize"`
 	LowPrice                       float64   `json:"lowPrice"`
 	MaintMargin                    float64   `json:"maintMargin"`
 	MakerFee                       float64   `json:"makerFee"`
 	MarkMethod                     string    `json:"markMethod"`
 	MarkPrice                      float64   `json:"markPrice"`
-	MaxOrderQty                    int64     `json:"maxOrderQty"`
+	MaxOrderQty                    float64   `json:"maxOrderQty"`
 	MaxPrice                       float64   `json:"maxPrice"`
 	MidPrice                       float64   `json:"midPrice"`
-	Multiplier                     int64     `json:"multiplier"`
-	OpenInterest                   int64     `json:"openInterest"`
-	OpenValue                      int64     `json:"openValue"`
+	Multiplier                     float64   `json:"multiplier"`
+	OpenInterest                   float64   `json:"openInterest"`
+	OpenValue                      float64   `json:"openValue"`
 	OpeningTimestamp               time.Time `json:"openingTimestamp"`
 	OptionMultiplier               float64   `json:"optionMultiplier"`
 	OptionStrikePcnt               float64   `json:"optionStrikePcnt"`
@@ -184,8 +184,8 @@ type Instrument struct {
 	PositionCurrency               string    `json:"positionCurrency"`
 	PrevClosePrice                 float64   `json:"prevClosePrice"`
 	PrevPrice24h                   float64   `json:"prevPrice24h"`
-	PrevTotalTurnover              int64     `json:"prevTotalTurnover"`
-	PrevTotalVolume                int64     `json:"prevTotalVolume"`
+	PrevTotalTurnover              float64   `json:"prevTotalTurnover"`
+	PrevTotalVolume                float64   `json:"prevTotalVolume"`
 	PublishInterval                string    `json:"publishInterval"`
 	PublishTime                    string    `json:"publishTime"`
 	QuoteCurrency                  string    `json:"quoteCurrency"`
@@ -195,8 +195,8 @@ type Instrument struct {
 	Reference                      string    `json:"reference"`
 	ReferenceSymbol                string    `json:"referenceSymbol"`
 	RelistInterval                 string    `json:"relistInterval"`
-	RiskLimit                      int64     `json:"riskLimit"`
-	RiskStep                       int64     `json:"riskStep"`
+	RiskLimit                      float64   `json:"riskLimit"`
+	RiskStep                       float64   `json:"riskStep"`
 	RootSymbol                     string    `json:"rootSymbol"`
 	SellLeg                        string    `json:"sellLeg"`
 	SessionInterval                string    `json:"sessionInterval"`
@@ -210,15 +210,15 @@ type Instrument struct {
 	Taxed                          bool      `json:"taxed"`
 	TickSize                       float64   `json:"tickSize"`
 	Timestamp                      time.Time `json:"timestamp"`
-	TotalTurnover                  int64     `json:"totalTurnover"`
-	TotalVolume                    int64     `json:"totalVolume"`
-	Turnover                       int64     `json:"turnover"`
-	Turnover24h                    int64     `json:"turnover24h"`
+	TotalTurnover                  float64   `json:"totalTurnover"`
+	TotalVolume                    float64   `json:"totalVolume"`
+	Turnover                       float64   `json:"turnover"`
+	Turnover24h                    float64   `json:"turnover24h"`
 	Typ                            string    `json:"typ"`
 	Underlying                     string    `json:"underlying"`
 	UnderlyingSymbol               string    `json:"underlyingSymbol"`
-	UnderlyingToPositionMultiplier int64     `json:"underlyingToPositionMultiplier"`
-	UnderlyingToSettleMultiplier   int64     `json:"underlyingToSettleMultiplier"`
+	UnderlyingToPositionMultiplier float64   `json:"underlyingToPositionMultiplier"`
+	UnderlyingToSettleMultiplier   float64   `json:"underlyingToSettleMultiplier"`
 	Volume                         float64   `json:"volume"`
 	Volume24h                      float64   `json:"volume24h"`
 	Vwap                           float64   `json:"vwap"`
@@ -241,7 +241,7 @@ type IndexComposite struct {
 	Weight      float64   `json:"weight"`
 }
 
-// Insurance Insurance Fund Data
+// Insurance stores insurance fund data
 type Insurance struct {
 	Currency      string    `json:"currency"`
 	Timestamp     time.Time `json:"timestamp"`
@@ -322,11 +322,12 @@ type Order struct {
 
 // OrderBookL2 contains order book l2
 type OrderBookL2 struct {
-	ID     int64   `json:"id"`
-	Price  float64 `json:"price"`
-	Side   string  `json:"side"`
-	Size   int64   `json:"size"`
-	Symbol string  `json:"symbol"`
+	ID        int64     `json:"id"`
+	Price     float64   `json:"price"`
+	Side      string    `json:"side"`
+	Size      int64     `json:"size"`
+	Symbol    string    `json:"symbol"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // Position Summary of Open and Closed Positions
@@ -564,12 +565,13 @@ type AffiliateStatus struct {
 type TransactionInfo struct {
 	Account        int64     `json:"account"`
 	Address        string    `json:"address"`
-	Amount         int64     `json:"amount"`
+	Amount         float64   `json:"amount"`
 	Currency       string    `json:"currency"`
-	Fee            int64     `json:"fee"`
+	Fee            float64   `json:"fee"`
 	Text           string    `json:"text"`
 	Timestamp      time.Time `json:"timestamp"`
 	TransactID     string    `json:"transactID"`
+	Network        string    `json:"network"`
 	TransactStatus string    `json:"transactStatus"`
 	TransactTime   string    `json:"transactTime"`
 	TransactType   string    `json:"transactType"`

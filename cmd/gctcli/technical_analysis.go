@@ -11,6 +11,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/gctrpc"
 	"github.com/urfave/cli/v2"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var (
@@ -48,13 +49,13 @@ var commonFlag = []cli.Flag{
 	&cli.StringFlag{
 		Name:        "start",
 		Usage:       "the start date",
-		Value:       time.Now().AddDate(0, -1, 0).Format(common.SimpleTimeFormat),
+		Value:       time.Now().AddDate(0, -1, 0).Format(time.DateTime),
 		Destination: &taStartTime,
 	},
 	&cli.StringFlag{
 		Name:        "end",
 		Usage:       "the end date",
-		Value:       time.Now().Format(common.SimpleTimeFormat),
+		Value:       time.Now().Format(time.DateTime),
 		Destination: &taEndTime,
 	},
 }
@@ -118,7 +119,7 @@ var (
 
 var technicalAnalysisCommand = &cli.Command{
 	Name:      "technicalanalysis",
-	Usage:     "get techincal analysis command",
+	Usage:     "get technical analysis command",
 	Aliases:   []string{"ta"},
 	ArgsUsage: "<command> <args>",
 	Subcommands: []*cli.Command{
@@ -295,15 +296,14 @@ func getTecnicalAnalysis(c *cli.Context, algo string) error {
 		taEndTime, _ = c.Value("end").(string)
 	}
 
-	s, err := time.Parse(common.SimpleTimeFormat, taStartTime)
+	s, err := time.ParseInLocation(time.DateTime, taStartTime, time.Local)
 	if err != nil {
 		return fmt.Errorf("invalid time format for start: %v", err)
 	}
-	e, err := time.Parse(common.SimpleTimeFormat, taEndTime)
+	e, err := time.ParseInLocation(time.DateTime, taEndTime, time.Local)
 	if err != nil {
 		return fmt.Errorf("invalid time format for end: %v", err)
 	}
-
 	err = common.StartEndTimeCheck(s, e)
 	if err != nil {
 		return err
@@ -335,8 +335,8 @@ func getTecnicalAnalysis(c *cli.Context, algo string) error {
 		AssetType:     asset,
 		AlgorithmType: algo,
 		Interval:      taGranularity * int64(time.Second),
-		Start:         negateLocalOffsetTS(s),
-		End:           negateLocalOffsetTS(e),
+		Start:         timestamppb.New(s),
+		End:           timestamppb.New(e),
 		Period:        taPeriod,
 	}
 
@@ -411,11 +411,11 @@ func getBollingerBands(c *cli.Context) error {
 		taEndTime, _ = c.Value("end").(string)
 	}
 
-	s, err := time.Parse(common.SimpleTimeFormat, taStartTime)
+	s, err := time.ParseInLocation(time.DateTime, taStartTime, time.Local)
 	if err != nil {
 		return fmt.Errorf("invalid time format for start: %v", err)
 	}
-	e, err := time.Parse(common.SimpleTimeFormat, taEndTime)
+	e, err := time.ParseInLocation(time.DateTime, taEndTime, time.Local)
 	if err != nil {
 		return fmt.Errorf("invalid time format for end: %v", err)
 	}
@@ -488,8 +488,8 @@ func getBollingerBands(c *cli.Context) error {
 		AssetType:             asset,
 		AlgorithmType:         "BBANDS",
 		Interval:              taGranularity * int64(time.Second),
-		Start:                 negateLocalOffsetTS(s),
-		End:                   negateLocalOffsetTS(e),
+		Start:                 timestamppb.New(s),
+		End:                   timestamppb.New(e),
 		Period:                taPeriod,
 		StandardDeviationUp:   taStdDevUp,
 		StandardDeviationDown: taStdDevDown,
@@ -567,11 +567,11 @@ func getMACD(c *cli.Context) error {
 		taEndTime, _ = c.Value("end").(string)
 	}
 
-	s, err := time.Parse(common.SimpleTimeFormat, taStartTime)
+	s, err := time.ParseInLocation(time.DateTime, taStartTime, time.Local)
 	if err != nil {
 		return fmt.Errorf("invalid time format for start: %v", err)
 	}
-	e, err := time.Parse(common.SimpleTimeFormat, taEndTime)
+	e, err := time.ParseInLocation(time.DateTime, taEndTime, time.Local)
 	if err != nil {
 		return fmt.Errorf("invalid time format for end: %v", err)
 	}
@@ -629,8 +629,8 @@ func getMACD(c *cli.Context) error {
 		AssetType:     asset,
 		AlgorithmType: "MACD",
 		Interval:      taGranularity * int64(time.Second),
-		Start:         negateLocalOffsetTS(s),
-		End:           negateLocalOffsetTS(e),
+		Start:         timestamppb.New(s),
+		End:           timestamppb.New(e),
 		Period:        taPeriod,
 		SlowPeriod:    taSlowPeriod,
 		FastPeriod:    taFastPeriod,
@@ -707,11 +707,11 @@ func getCoco(c *cli.Context) error {
 		taEndTime, _ = c.Value("end").(string)
 	}
 
-	s, err := time.Parse(common.SimpleTimeFormat, taStartTime)
+	s, err := time.ParseInLocation(time.DateTime, taStartTime, time.Local)
 	if err != nil {
 		return fmt.Errorf("invalid time format for start: %v", err)
 	}
-	e, err := time.Parse(common.SimpleTimeFormat, taEndTime)
+	e, err := time.ParseInLocation(time.DateTime, taEndTime, time.Local)
 	if err != nil {
 		return fmt.Errorf("invalid time format for end: %v", err)
 	}
@@ -781,8 +781,8 @@ func getCoco(c *cli.Context) error {
 		AssetType:      asset,
 		AlgorithmType:  "COCO",
 		Interval:       taGranularity * int64(time.Second),
-		Start:          negateLocalOffsetTS(s),
-		End:            negateLocalOffsetTS(e),
+		Start:          timestamppb.New(s),
+		End:            timestamppb.New(e),
 		Period:         taPeriod,
 		OtherExchange:  otherExchange,
 		OtherPair:      &gctrpc.CurrencyPair{Base: otherPair.Base.String(), Quote: otherPair.Quote.String()},

@@ -59,7 +59,7 @@ func setupClient(c *cli.Context) (*grpc.ClientConn, context.CancelFunc, error) {
 
 	var cancel context.CancelFunc
 	c.Context, cancel = context.WithTimeout(c.Context, timeout)
-	conn, err := grpc.DialContext(c.Context, host, opts...)
+	conn, err := grpc.NewClient(host, opts...)
 	return conn, cancel, err
 }
 
@@ -112,13 +112,13 @@ func main() {
 	app.Commands = []*cli.Command{
 		executeStrategyFromFileCommand,
 		executeStrategyFromConfigCommand,
-		listAllRunsCommand,
-		startRunCommand,
-		startAllRunsCommand,
-		stopRunCommand,
-		stopAllRunsCommand,
-		clearRunCommand,
-		clearAllRunsCommand,
+		listAllTasksCommand,
+		startTaskCommand,
+		startAllTasksCommand,
+		stopTaskCommand,
+		stopAllTasksCommand,
+		clearTaskCommand,
+		clearAllTasksCommand,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

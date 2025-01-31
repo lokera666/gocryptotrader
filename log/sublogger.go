@@ -1,10 +1,12 @@
 package log
 
 import (
+	"errors"
 	"fmt"
-	"io"
 	"strings"
 )
+
+var errMultiWriterHolderIsNil = errors.New("multiwriter holder is nil")
 
 // NewSubLogger allows for a new sub logger to be registered.
 func NewSubLogger(name string) (*SubLogger, error) {
@@ -12,56 +14,42 @@ func NewSubLogger(name string) (*SubLogger, error) {
 		return nil, errEmptyLoggerName
 	}
 	name = strings.ToUpper(name)
-	RWM.RLock()
+	mu.Lock()
+	defer mu.Unlock()
 	if _, ok := SubLoggers[name]; ok {
-		RWM.RUnlock()
 		return nil, fmt.Errorf("'%v' %w", name, ErrSubLoggerAlreadyRegistered)
 	}
-	RWM.RUnlock()
 	return registerNewSubLogger(name), nil
 }
 
 // SetOutput overrides the default output with a new writer
-func (sl *SubLogger) SetOutput(o io.Writer) {
-	sl.mtx.Lock()
+func (sl *SubLogger) setOutput(o *multiWriterHolder) error {
+	if o == nil {
+		return errMultiWriterHolderIsNil
+	}
 	sl.output = o
-	sl.mtx.Unlock()
+	return nil
 }
 
 // SetLevels overrides the default levels with new levels; levelception
-func (sl *SubLogger) SetLevels(newLevels Levels) {
-	sl.mtx.Lock()
+func (sl *SubLogger) setLevels(newLevels Levels) {
 	sl.levels = newLevels
-	sl.mtx.Unlock()
 }
 
-// GetLevels returns current functional log levels
-func (sl *SubLogger) GetLevels() Levels {
-	sl.mtx.RLock()
-	defer sl.mtx.RUnlock()
-	return sl.levels
-}
-
-func (sl *SubLogger) getFields() *logFields {
-	RWM.RLock()
-	defer RWM.RUnlock()
-
-	if sl == nil ||
-		(GlobalLogConfig != nil &&
-			GlobalLogConfig.Enabled != nil &&
-			!*GlobalLogConfig.Enabled) {
+// getFields returns sub logger specific fields for the potential log job.
+// Note: Calling function must have mutex lock in place.
+func (sl *SubLogger) getFields() *fields {
+	if sl == nil || globalLogConfig == nil || globalLogConfig.Enabled == nil || !*globalLogConfig.Enabled {
 		return nil
 	}
-
-	sl.mtx.RLock()
-	defer sl.mtx.RUnlock()
-	return &logFields{
-		info:   sl.levels.Info,
-		warn:   sl.levels.Warn,
-		debug:  sl.levels.Debug,
-		error:  sl.levels.Error,
-		name:   sl.name,
-		output: sl.output,
-		logger: logger,
-	}
+	f := logFieldsPool.Get().(*fields) //nolint:forcetypeassert // Not necessary from a pool
+	f.info = sl.levels.Info
+	f.warn = sl.levels.Warn
+	f.debug = sl.levels.Debug
+	f.error = sl.levels.Error
+	f.name = sl.name
+	f.output = sl.output
+	f.botName = sl.botName
+	f.structuredLogging = sl.structuredLogging
+	return f
 }

@@ -64,7 +64,7 @@ func UpdateCurrencies(c Currencies, isCryptocurrency bool) {
 	storage.UpdateEnabledFiatCurrencies(c)
 }
 
-// ConvertFiat converts an fiat amount from one currency to another
+// ConvertFiat converts a fiat amount from one currency to another
 func ConvertFiat(amount float64, from, to Code) (float64, error) {
 	return storage.ConvertCurrency(amount, from, to)
 }
@@ -110,9 +110,8 @@ func CopyPairFormat(p Pair, pairs []Pair, exact bool) Pair {
 	return EMPTYPAIR
 }
 
-// FormatPairs formats a string array to a list of currency pairs with the
-// supplied currency pair format
-func FormatPairs(pairs []string, delimiter, index string) (Pairs, error) {
+// FormatPairs formats a string array to a list of currency pairs with the supplied currency pair format
+func FormatPairs(pairs []string, delimiter string) (Pairs, error) {
 	var result = make(Pairs, len(pairs))
 	for x := range pairs {
 		if pairs[x] == "" {
@@ -122,8 +121,8 @@ func FormatPairs(pairs []string, delimiter, index string) (Pairs, error) {
 		switch {
 		case delimiter != "":
 			result[x], err = NewPairDelimiter(pairs[x], delimiter)
-		case index != "":
-			result[x], err = NewPairFromIndex(pairs[x], index)
+		case len(pairs[x]) < 3:
+			err = errNoDelimiter
 		default:
 			result[x], err = NewPairFromStrings(pairs[x][:3], pairs[x][3:])
 		}

@@ -1,6 +1,7 @@
 package gct
 
 import (
+	"context"
 	"errors"
 	"log"
 	"os"
@@ -10,7 +11,9 @@ import (
 
 	objects "github.com/d5/tengo/v2"
 	"github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/config"
 	"github.com/thrasher-corp/gocryptotrader/engine"
+	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/gctscript/modules"
 	"github.com/thrasher-corp/gocryptotrader/gctscript/modules/gct"
@@ -18,10 +21,12 @@ import (
 
 func TestMain(m *testing.M) {
 	settings := engine.Settings{
-		ConfigFile:                  filepath.Join("..", "..", "..", "testdata", "configtest.json"),
-		EnableDryRun:                true,
-		DataDir:                     filepath.Join("..", "..", "..", "testdata", "gocryptotrader"),
-		EnableDepositAddressManager: true,
+		CoreSettings: engine.CoreSettings{
+			EnableDryRun:                true,
+			EnableDepositAddressManager: true,
+		},
+		ConfigFile: filepath.Join("..", "..", "..", "testdata", "configtest.json"),
+		DataDir:    filepath.Join("..", "..", "..", "testdata", "gocryptotrader"),
 	}
 	var err error
 	engine.Bot, err = engine.NewFromSettings(&settings, nil)
@@ -29,14 +34,13 @@ func TestMain(m *testing.M) {
 		log.Print(err)
 		os.Exit(1)
 	}
-	em := engine.SetupExchangeManager()
+	em := engine.NewExchangeManager()
 	exch, err := em.NewExchangeByName(exch.Value)
 	if err != nil {
 		log.Print(err)
 		os.Exit(1)
 	}
-	exch.SetDefaults()
-	cfg, err := exch.GetDefaultConfig()
+	cfg, err := exchange.GetDefaultConfig(context.Background(), exch)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -44,7 +48,10 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	em.Add(exch)
+	err = em.Add(exch)
+	if !errors.Is(err, nil) {
+		log.Fatalf("received: '%v' but expected: '%v'", err, nil)
+	}
 	engine.Bot.ExchangeManager = em
 	engine.Bot.WithdrawManager, err = engine.SetupWithdrawManager(em, nil, true)
 	if err != nil {
@@ -59,7 +66,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	engine.Bot.OrderManager, err = engine.SetupOrderManager(em, &engine.CommunicationManager{}, &engine.Bot.ServicesWG, false, false, 0)
+	engine.Bot.OrderManager, err = engine.SetupOrderManager(em, &engine.CommunicationManager{}, &engine.Bot.ServicesWG, &config.OrderManager{})
 	if err != nil {
 		log.Print(err)
 		os.Exit(1)
@@ -89,10 +96,10 @@ var (
 		Value: "error",
 	}
 	currencyPair = &objects.String{
-		Value: "BTCUSD",
+		Value: "BTC-USD",
 	}
 	delimiter = &objects.String{
-		Value: "",
+		Value: "-",
 	}
 	assetType = &objects.String{
 		Value: "spot",

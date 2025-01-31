@@ -31,6 +31,9 @@ const (
 	btseSPOTAPIPath    = "/api/v3.2/"
 	btseFuturesPath    = "/futures"
 	btseFuturesAPIPath = "/api/v2.1/"
+	tradeBaseURL       = "https://www.btse.com/en/"
+	tradeSpot          = "trading/"
+	tradeFutures       = "futures/"
 
 	// Public endpoints
 	btseMarketOverview = "market_summary"
@@ -65,8 +68,9 @@ func (b *BTSE) FetchFundingHistory(ctx context.Context, symbol string) (map[stri
 	return resp, b.SendHTTPRequest(ctx, exchange.RestFutures, http.MethodGet, btseFuturesFunding+params.Encode(), &resp, false, queryFunc)
 }
 
-// GetMarketSummary stores market summary data
-func (b *BTSE) GetMarketSummary(ctx context.Context, symbol string, spot bool) (MarketSummary, error) {
+// GetRawMarketSummary returns an unfiltered list of market pairs
+// Consider using the wrapper function GetMarketSummary instead
+func (b *BTSE) GetRawMarketSummary(ctx context.Context, symbol string, spot bool) (MarketSummary, error) {
 	var m MarketSummary
 	path := btseMarketOverview
 	if symbol != "" {
@@ -118,7 +122,7 @@ func (b *BTSE) GetTrades(ctx context.Context, symbol string, start, end time.Tim
 		urlValues.Add("end", strconv.FormatInt(end.Unix(), 10))
 	}
 	if !start.IsZero() && !end.IsZero() && start.After(end) {
-		return t, errors.New("start cannot be after end time")
+		return t, common.ErrStartAfterEnd
 	}
 	if beforeSerialID > 0 {
 		urlValues.Add("beforeSerialId", strconv.Itoa(beforeSerialID))
@@ -133,15 +137,15 @@ func (b *BTSE) GetTrades(ctx context.Context, symbol string, start, end time.Tim
 		common.EncodeURLValues(btseTrades, urlValues), &t, spot, queryFunc)
 }
 
-// OHLCV retrieve and return OHLCV candle data for requested symbol
-func (b *BTSE) OHLCV(ctx context.Context, symbol string, start, end time.Time, resolution int) (OHLCV, error) {
+// GetOHLCV retrieve and return OHLCV candle data for requested symbol
+func (b *BTSE) GetOHLCV(ctx context.Context, symbol string, start, end time.Time, resolution int, a asset.Item) (OHLCV, error) {
 	var o OHLCV
 	urlValues := url.Values{}
 	urlValues.Add("symbol", symbol)
 
 	if !start.IsZero() && !end.IsZero() {
 		if start.After(end) {
-			return o, errors.New("start cannot be after end time")
+			return o, common.ErrStartAfterEnd
 		}
 		urlValues.Add("start", strconv.FormatInt(start.Unix(), 10))
 		urlValues.Add("end", strconv.FormatInt(end.Unix(), 10))
@@ -152,7 +156,8 @@ func (b *BTSE) OHLCV(ctx context.Context, symbol string, start, end time.Time, r
 	}
 	urlValues.Add("resolution", strconv.FormatInt(int64(res), 10))
 	endpoint := common.EncodeURLValues(btseOHLCV, urlValues)
-	return o, b.SendHTTPRequest(ctx, exchange.RestSpot, http.MethodGet, endpoint, &o, true, queryFunc)
+
+	return o, b.SendHTTPRequest(ctx, exchange.RestSpot, http.MethodGet, endpoint, &o, a == asset.Spot, queryFunc)
 }
 
 // GetPrice get current price for requested symbol
@@ -194,7 +199,7 @@ func (b *BTSE) GetWalletHistory(ctx context.Context, symbol string, start, end t
 	}
 	if !start.IsZero() && !end.IsZero() {
 		if start.After(end) || end.Before(start) {
-			return resp, errors.New("start cannot be after end time")
+			return resp, common.ErrStartAfterEnd
 		}
 		urlValues.Add("start", strconv.FormatInt(start.Unix(), 10))
 		urlValues.Add("end", strconv.FormatInt(end.Unix(), 10))
@@ -446,7 +451,7 @@ func (b *BTSE) SendHTTPRequest(ctx context.Context, ep exchange.URL, method, end
 	}
 	return b.SendPayload(ctx, f, func() (*request.Item, error) {
 		return item, nil
-	})
+	}, request.UnauthenticatedRequest)
 }
 
 // SendAuthenticatedHTTPRequest sends an authenticated HTTP request to the desired endpoint
@@ -491,7 +496,7 @@ func (b *BTSE) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange.URL
 			body = bytes.NewBuffer(reqPayload)
 			hmac, err = crypto.GetHMAC(
 				crypto.HashSHA512_384,
-				[]byte((expandedEndpoint + nonce + string(reqPayload))),
+				[]byte(expandedEndpoint+nonce+string(reqPayload)),
 				[]byte(creds.Secret),
 			)
 			if err != nil {
@@ -501,7 +506,7 @@ func (b *BTSE) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange.URL
 		} else {
 			hmac, err = crypto.GetHMAC(
 				crypto.HashSHA512_384,
-				[]byte((expandedEndpoint + nonce)),
+				[]byte(expandedEndpoint+nonce),
 				[]byte(creds.Secret),
 			)
 			if err != nil {
@@ -519,13 +524,12 @@ func (b *BTSE) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange.URL
 			Headers:       headers,
 			Body:          body,
 			Result:        result,
-			AuthRequest:   true,
 			Verbose:       b.Verbose,
 			HTTPDebugging: b.HTTPDebugging,
 			HTTPRecording: b.HTTPRecording,
 		}, nil
 	}
-	return b.SendPayload(ctx, f, newRequest)
+	return b.SendPayload(ctx, f, newRequest, request.AuthenticatedRequest)
 }
 
 // GetFee returns an estimate of fee based on type of transaction
@@ -600,7 +604,7 @@ func (b *BTSE) calculateTradingFee(ctx context.Context, feeBuilder *exchange.Fee
 	}
 	feeTiers, err := b.GetFeeInformation(ctx, formattedPair.String())
 	if err != nil {
-		// TODO: Return actual error, we should't pivot around errors.
+		// TODO: Return actual error, we shouldn't pivot around errors.
 		if feeBuilder.IsMaker {
 			return 0.001
 		}
@@ -613,5 +617,10 @@ func (b *BTSE) calculateTradingFee(ctx context.Context, feeBuilder *exchange.Fee
 }
 
 func parseOrderTime(timeStr string) (time.Time, error) {
-	return time.Parse(common.SimpleTimeFormat, timeStr)
+	return time.Parse(time.DateTime, timeStr)
+}
+
+// HasLiquidity returns if a market pair has a bid or ask != 0
+func (m *MarketPair) HasLiquidity() bool {
+	return m.LowestAsk != 0 || m.HighestBid != 0
 }

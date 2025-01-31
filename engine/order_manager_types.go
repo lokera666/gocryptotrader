@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/currency"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/futures"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 )
 
@@ -24,7 +25,7 @@ var (
 	errNilCommunicationsManager = errors.New("cannot start with nil communications manager")
 	errNilOrder                 = errors.New("nil order received")
 	errFuturesTrackingDisabled  = errors.New("tracking futures positions disabled. enable it via config under orderManager activelyTrackFuturesPositions")
-	orderManagerDelay           = time.Second * 10
+	orderManagerInterval        = time.Second * 10
 	defaultOrderSeekTime        = -time.Hour * 24 * 365
 )
 
@@ -48,6 +49,7 @@ type OrderManager struct {
 	verbose                       bool
 	activelyTrackFuturesPositions bool
 	futuresPositionSeekDuration   time.Duration
+	respectOrderHistoryLimits     bool
 }
 
 // store holds all orders by exchange
@@ -57,7 +59,7 @@ type store struct {
 	commsManager              iCommsManager
 	exchangeManager           iExchangeManager
 	wg                        *sync.WaitGroup
-	futuresPositionController order.PositionController
+	futuresPositionController futures.PositionController
 }
 
 // OrderSubmitResponse contains the order response along with an internal order ID

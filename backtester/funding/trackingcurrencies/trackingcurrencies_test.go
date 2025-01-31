@@ -4,16 +4,17 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/thrasher-corp/gocryptotrader/common/convert"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/engine"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 )
 
 var (
-	exch = "binance"
-	a    = asset.Spot
-	b    = currency.BTC
-	q    = currency.USDT
+	eName = "binance"
+	a     = asset.Spot
+	b     = currency.BTC
+	q     = currency.USDT
 )
 
 func TestCreateUSDTrackingPairs(t *testing.T) {
@@ -29,42 +30,53 @@ func TestCreateUSDTrackingPairs(t *testing.T) {
 		t.Errorf("received '%v' expected '%v'", err, errExchangeManagerRequired)
 	}
 
-	em := engine.SetupExchangeManager()
-	_, err = CreateUSDTrackingPairs([]TrackingPair{{Exchange: exch}}, em)
+	em := engine.NewExchangeManager()
+	_, err = CreateUSDTrackingPairs([]TrackingPair{{Exchange: eName}}, em)
 	if !errors.Is(err, engine.ErrExchangeNotFound) {
 		t.Errorf("received '%v' expected '%v'", err, engine.ErrExchangeNotFound)
 	}
 
 	s1 := TrackingPair{
-		Exchange: exch,
+		Exchange: eName,
 		Asset:    a,
 		Base:     b,
 		Quote:    q,
 	}
-	excher, err := em.NewExchangeByName(exch)
+
+	exch, err := em.NewExchangeByName(eName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = excher.GetDefaultConfig()
-	if err != nil {
-		t.Fatal(err)
+	exch.SetDefaults()
+	cp := currency.NewPair(s1.Base, s1.Quote)
+	cp2 := currency.NewPair(currency.LTC, currency.USDT)
+	cp3 := currency.NewPair(currency.LTC, currency.BTC)
+	exchB := exch.GetBase()
+	eba := exchB.CurrencyPairs.Pairs[a]
+	eba.Available = eba.Available.Add(cp, cp2, cp3)
+	eba.Enabled = eba.Enabled.Add(cp, cp2, cp3)
+	eba.AssetEnabled = convert.BoolPtr(true)
+
+	err = em.Add(exch)
+	if !errors.Is(err, nil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
 	}
-	em.Add(excher)
 	resp, err := CreateUSDTrackingPairs([]TrackingPair{s1}, em)
 	if !errors.Is(err, nil) {
 		t.Errorf("received '%v' expected '%v'", err, nil)
 	}
 	if len(resp) != 1 {
-		t.Error("expected 1 currency setting as it contains a USD equiv")
+		t.Error("expected 1 currency setting as it contains a USDT equiv")
 	}
 	s1.Base = currency.LTC
 	s1.Quote = currency.BTC
+
 	resp, err = CreateUSDTrackingPairs([]TrackingPair{s1}, em)
 	if !errors.Is(err, nil) {
 		t.Errorf("received '%v' expected '%v'", err, nil)
 	}
 	if len(resp) != 3 {
-		t.Error("expected 3 currency settings as it did not contain a USD equiv")
+		t.Error("expected 3 currency settings as it did not contain a USDT equiv")
 	}
 }
 
@@ -80,7 +92,7 @@ func TestFindMatchingUSDPairs(t *testing.T) {
 	}
 	tests := []testPair{
 		{
-			description:    "already has USD",
+			description:    "already has USDT",
 			initialPair:    currency.NewPair(currency.BTC, currency.USDT),
 			availablePairs: &currency.PairStore{Available: currency.Pairs{currency.NewPair(currency.BTC, currency.USDT)}},
 			basePair:       currency.EMPTYPAIR,
@@ -96,7 +108,7 @@ func TestFindMatchingUSDPairs(t *testing.T) {
 			expectedErr:    nil,
 		},
 		{
-			description:    "quote currency has no matching USD pair",
+			description:    "quote currency has no matching USDT pair",
 			initialPair:    currency.NewPair(currency.BTC, currency.LTC),
 			availablePairs: &currency.PairStore{Available: currency.Pairs{currency.NewPair(currency.BTC, currency.LTC), currency.NewPair(currency.BTC, currency.DAI)}},
 			basePair:       currency.NewPair(currency.BTC, currency.DAI),
@@ -104,7 +116,7 @@ func TestFindMatchingUSDPairs(t *testing.T) {
 			expectedErr:    errNoMatchingQuoteUSDFound,
 		},
 		{
-			description:    "base currency has no matching USD pair",
+			description:    "base currency has no matching USDT pair",
 			initialPair:    currency.NewPair(currency.BTC, currency.LTC),
 			availablePairs: &currency.PairStore{Available: currency.Pairs{currency.NewPair(currency.BTC, currency.LTC), currency.NewPair(currency.LTC, currency.USDT)}},
 			basePair:       currency.EMPTYPAIR,
@@ -112,7 +124,7 @@ func TestFindMatchingUSDPairs(t *testing.T) {
 			expectedErr:    errNoMatchingBaseUSDFound,
 		},
 		{
-			description:    "both base and quote don't have USD pairs",
+			description:    "both base and quote don't have USDT pairs",
 			initialPair:    currency.NewPair(currency.BTC, currency.LTC),
 			availablePairs: &currency.PairStore{Available: currency.Pairs{currency.NewPair(currency.BTC, currency.LTC)}},
 			basePair:       currency.EMPTYPAIR,
@@ -120,7 +132,7 @@ func TestFindMatchingUSDPairs(t *testing.T) {
 			expectedErr:    errNoMatchingPairUSDFound,
 		},
 		{
-			description:    "currency doesnt exist in available pairs",
+			description:    "currency doesn't exist in available pairs",
 			initialPair:    currency.NewPair(currency.BTC, currency.LTC),
 			availablePairs: &currency.PairStore{Available: currency.Pairs{currency.NewPair(currency.BTC, currency.DOGE)}},
 			basePair:       currency.EMPTYPAIR,
@@ -128,8 +140,7 @@ func TestFindMatchingUSDPairs(t *testing.T) {
 			expectedErr:    errCurrencyNotFoundInPairs,
 		},
 	}
-	for i := range tests {
-		tt := tests[i]
+	for _, tt := range tests {
 		t.Run(tt.description, func(t *testing.T) {
 			t.Parallel()
 			basePair, quotePair, err := findMatchingUSDPairs(tt.initialPair, tt.availablePairs)
@@ -167,7 +178,7 @@ func TestPairContainsUSD(t *testing.T) {
 		{
 			"usdltc",
 			true,
-			currency.NewPair(currency.USD, currency.LTC),
+			currency.NewPair(currency.USDT, currency.LTC),
 		},
 		{
 			"btcdai",
@@ -182,7 +193,7 @@ func TestPairContainsUSD(t *testing.T) {
 		{
 			"btcusd",
 			true,
-			currency.NewPair(currency.BTC, currency.USD),
+			currency.NewPair(currency.BTC, currency.USDT),
 		},
 		{
 			"btcaud",
@@ -210,8 +221,7 @@ func TestPairContainsUSD(t *testing.T) {
 			currency.NewPair(currency.BTC, currency.PAX),
 		},
 	}
-	for i := range pairs {
-		tt := pairs[i]
+	for _, tt := range pairs {
 		t.Run(tt.description, func(t *testing.T) {
 			t.Parallel()
 			resp := pairContainsUSD(tt.pair)

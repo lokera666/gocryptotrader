@@ -1,17 +1,22 @@
 package order
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gofrs/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/protocol"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/validate"
 )
 
@@ -21,9 +26,12 @@ func TestSubmit_Validate(t *testing.T) {
 	t.Parallel()
 	testPair := currency.NewPair(currency.BTC, currency.LTC)
 	tester := []struct {
-		ExpectedErr error
-		Submit      *Submit
-		ValidOpts   validate.Checker
+		ExpectedErr                     error
+		Submit                          *Submit
+		ValidOpts                       validate.Checker
+		HasToPurchaseWithQuoteAmountSet bool
+		HasToSellWithBaseAmountSet      bool
+		RequiresID                      bool
 	}{
 		{
 			ExpectedErr: ErrSubmissionIsNil,
@@ -47,7 +55,7 @@ func TestSubmit_Validate(t *testing.T) {
 			Submit: &Submit{
 				Exchange:  "test",
 				Pair:      testPair,
-				AssetType: 255,
+				AssetType: asset.All,
 			},
 		}, // valid pair but invalid asset
 		{
@@ -175,13 +183,72 @@ func TestSubmit_Validate(t *testing.T) {
 			},
 			ValidOpts: validate.Check(func() error { return nil }),
 		}, // valid order!
+		{
+			ExpectedErr: ErrAmountMustBeSet,
+			Submit: &Submit{
+				Exchange:  "test",
+				Pair:      testPair,
+				Side:      Buy,
+				Type:      Market,
+				Amount:    1,
+				AssetType: asset.Spot,
+			},
+			HasToPurchaseWithQuoteAmountSet: true,
+			ValidOpts:                       validate.Check(func() error { return nil }),
+		},
+		{
+			ExpectedErr: ErrAmountMustBeSet,
+			Submit: &Submit{
+				Exchange:    "test",
+				Pair:        testPair,
+				Side:        Sell,
+				Type:        Market,
+				QuoteAmount: 1,
+				AssetType:   asset.Spot,
+			},
+			HasToSellWithBaseAmountSet: true,
+			ValidOpts:                  validate.Check(func() error { return nil }),
+		},
+		{
+			ExpectedErr: ErrClientOrderIDMustBeSet,
+			Submit: &Submit{
+				Exchange:  "test",
+				Pair:      testPair,
+				Side:      Buy,
+				Type:      Market,
+				Amount:    1,
+				AssetType: asset.Spot,
+			},
+			RequiresID: true,
+			ValidOpts:  validate.Check(func() error { return nil }),
+		},
+		{
+			ExpectedErr: nil,
+			Submit: &Submit{
+				Exchange:      "test",
+				Pair:          testPair,
+				Side:          Buy,
+				Type:          Market,
+				Amount:        1,
+				AssetType:     asset.Spot,
+				ClientOrderID: "69420",
+			},
+			RequiresID: true,
+			ValidOpts:  validate.Check(func() error { return nil }),
+		},
 	}
 
-	for x := range tester {
-		err := tester[x].Submit.Validate(tester[x].ValidOpts)
-		if !errors.Is(err, tester[x].ExpectedErr) {
-			t.Fatalf("Unexpected result. %d Got: %v, want: %v", x+1, err, tester[x].ExpectedErr)
-		}
+	for x, tc := range tester {
+		t.Run(strconv.Itoa(x), func(t *testing.T) {
+			t.Parallel()
+			requirements := protocol.TradingRequirements{
+				SpotMarketOrderAmountPurchaseQuotationOnly: tc.HasToPurchaseWithQuoteAmountSet,
+				SpotMarketOrderAmountSellBaseOnly:          tc.HasToSellWithBaseAmountSet,
+				ClientOrderID:                              tc.RequiresID,
+			}
+			err := tc.Submit.Validate(requirements, tc.ValidOpts)
+			assert.ErrorIs(t, err, tc.ExpectedErr)
+		})
 	}
 }
 
@@ -262,20 +329,28 @@ func TestOrderSides(t *testing.T) {
 	}
 }
 
+func TestTitle(t *testing.T) {
+	t.Parallel()
+	orderType := Limit
+	if orderType.Title() != "Limit" {
+		t.Errorf("received '%v' expected 'Limit'", orderType.Title())
+	}
+}
+
 func TestOrderTypes(t *testing.T) {
 	t.Parallel()
 
-	var ot Type
-	if ot.String() != "UNKNOWN" {
-		t.Errorf("unexpected string %s", ot.String())
+	var orderType Type
+	if orderType.String() != "UNKNOWN" {
+		t.Errorf("unexpected string %s", orderType.String())
 	}
 
-	if ot.Lower() != "unknown" {
-		t.Errorf("unexpected string %s", ot.Lower())
+	if orderType.Lower() != "unknown" {
+		t.Errorf("unexpected string %s", orderType.Lower())
 	}
 
-	if ot.Title() != "Unknown" {
-		t.Errorf("unexpected string %s", ot.Title())
+	if orderType.Title() != "Unknown" {
+		t.Errorf("unexpected string %s", orderType.Title())
 	}
 }
 
@@ -373,20 +448,21 @@ func TestFilterOrdersByType(t *testing.T) {
 		{
 			Type: Limit,
 		},
+		{}, // Unpopulated fields are preserved for API differences
 	}
 
 	FilterOrdersByType(&orders, AnyType)
-	if len(orders) != 2 {
+	if len(orders) != 3 {
 		t.Errorf("Orders failed to be filtered. Expected %v, received %v", 2, len(orders))
 	}
 
 	FilterOrdersByType(&orders, Limit)
-	if len(orders) != 1 {
+	if len(orders) != 2 {
 		t.Errorf("Orders failed to be filtered. Expected %v, received %v", 1, len(orders))
 	}
 
 	FilterOrdersByType(&orders, Stop)
-	if len(orders) != 0 {
+	if len(orders) != 1 {
 		t.Errorf("Orders failed to be filtered. Expected %v, received %v", 0, len(orders))
 	}
 }
@@ -424,7 +500,7 @@ func TestFilterOrdersBySide(t *testing.T) {
 		{
 			Side: Sell,
 		},
-		{},
+		{}, // Unpopulated fields are preserved for API differences
 	}
 
 	FilterOrdersBySide(&orders, AnySide)
@@ -433,12 +509,12 @@ func TestFilterOrdersBySide(t *testing.T) {
 	}
 
 	FilterOrdersBySide(&orders, Buy)
-	if len(orders) != 1 {
+	if len(orders) != 2 {
 		t.Errorf("Orders failed to be filtered. Expected %v, received %v", 1, len(orders))
 	}
 
 	FilterOrdersBySide(&orders, Sell)
-	if len(orders) != 0 {
+	if len(orders) != 1 {
 		t.Errorf("Orders failed to be filtered. Expected %v, received %v", 0, len(orders))
 	}
 }
@@ -567,43 +643,44 @@ func TestFilterOrdersByPairs(t *testing.T) {
 		{
 			Pair: currency.NewPair(currency.DOGE, currency.RUB),
 		},
+		{}, // Unpopulated fields are preserved for API differences
 	}
 
 	currencies := []currency.Pair{currency.NewPair(currency.BTC, currency.USD),
 		currency.NewPair(currency.LTC, currency.EUR),
 		currency.NewPair(currency.DOGE, currency.RUB)}
 	FilterOrdersByPairs(&orders, currencies)
-	if len(orders) != 3 {
+	if len(orders) != 4 {
 		t.Errorf("Orders failed to be filtered. Expected %v, received %v", 3, len(orders))
 	}
 
 	currencies = []currency.Pair{currency.NewPair(currency.BTC, currency.USD),
 		currency.NewPair(currency.LTC, currency.EUR)}
 	FilterOrdersByPairs(&orders, currencies)
-	if len(orders) != 2 {
+	if len(orders) != 3 {
 		t.Errorf("Orders failed to be filtered. Expected %v, received %v", 2, len(orders))
 	}
 
 	currencies = []currency.Pair{currency.NewPair(currency.BTC, currency.USD)}
 	FilterOrdersByPairs(&orders, currencies)
-	if len(orders) != 1 {
+	if len(orders) != 2 {
 		t.Errorf("Orders failed to be filtered. Expected %v, received %v", 1, len(orders))
 	}
 
 	currencies = []currency.Pair{currency.NewPair(currency.USD, currency.BTC)}
 	FilterOrdersByPairs(&orders, currencies)
-	if len(orders) != 1 {
+	if len(orders) != 2 {
 		t.Errorf("Reverse Orders failed to be filtered. Expected %v, received %v", 1, len(orders))
 	}
 
 	currencies = []currency.Pair{}
 	FilterOrdersByPairs(&orders, currencies)
-	if len(orders) != 1 {
+	if len(orders) != 2 {
 		t.Errorf("Orders failed to be filtered. Expected %v, received %v", 1, len(orders))
 	}
 	currencies = append(currencies, currency.EMPTYPAIR)
 	FilterOrdersByPairs(&orders, currencies)
-	if len(orders) != 1 {
+	if len(orders) != 2 {
 		t.Errorf("Orders failed to be filtered. Expected %v, received %v", 1, len(orders))
 	}
 }
@@ -809,7 +886,7 @@ func TestStringToOrderSide(t *testing.T) {
 		{"any", AnySide, nil},
 		{"ANY", AnySide, nil},
 		{"aNy", AnySide, nil},
-		{"woahMan", UnknownSide, errUnrecognisedOrderSide},
+		{"woahMan", UnknownSide, ErrSideIsInvalid},
 	}
 	for i := range cases {
 		testData := &cases[i]
@@ -870,6 +947,8 @@ func TestStringToOrderType(t *testing.T) {
 		{"trigger", Trigger, nil},
 		{"TRIGGER", Trigger, nil},
 		{"tRiGgEr", Trigger, nil},
+		{"conDitiOnal", ConditionalStop, nil},
+		{"oCo", OCO, nil},
 		{"woahMan", UnknownType, errUnrecognisedOrderType},
 	}
 	for i := range cases {
@@ -1088,6 +1167,7 @@ func TestUpdateOrderFromDetail(t *testing.T) {
 		OrderID:           "1",
 		AccountID:         "1",
 		ClientID:          "1",
+		ClientOrderID:     "DukeOfWombleton",
 		WalletAddress:     "1",
 		Type:              1,
 		Side:              1,
@@ -1161,6 +1241,9 @@ func TestUpdateOrderFromDetail(t *testing.T) {
 		t.Error("Failed to update")
 	}
 	if od.ClientID != "1" {
+		t.Error("Failed to update")
+	}
+	if od.ClientOrderID != "DukeOfWombleton" {
 		t.Error("Failed to update")
 	}
 	if od.WalletAddress != "1" {
@@ -1257,11 +1340,11 @@ func TestUpdateOrderFromDetail(t *testing.T) {
 
 func TestClassificationError_Error(t *testing.T) {
 	class := ClassificationError{OrderID: "1337", Exchange: "test", Err: errors.New("test error")}
-	if class.Error() != "test - OrderID: 1337 classification error: test error" {
+	if class.Error() != "Exchange test: OrderID: 1337 classification error: test error" {
 		t.Fatal("unexpected output")
 	}
 	class.OrderID = ""
-	if class.Error() != "test - classification error: test error" {
+	if class.Error() != "Exchange test: classification error: test error" {
 		t.Fatal("unexpected output")
 	}
 }
@@ -1309,26 +1392,44 @@ func TestValidationOnOrderTypes(t *testing.T) {
 		t.Fatal("should return nil")
 	}
 
-	var getOrders *GetOrdersRequest
-	if getOrders.Validate() != ErrGetOrdersRequestIsNil {
-		t.Fatal("unexpected error")
+	var getOrders *MultiOrderRequest
+	err = getOrders.Validate()
+	if !errors.Is(err, ErrGetOrdersRequestIsNil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, ErrGetOrdersRequestIsNil)
 	}
 
-	getOrders = new(GetOrdersRequest)
-	if getOrders.Validate() == nil {
-		t.Fatal("should error since assetType hasn't been provided")
+	getOrders = new(MultiOrderRequest)
+	err = getOrders.Validate()
+	if !errors.Is(err, asset.ErrNotSupported) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, asset.ErrNotSupported)
 	}
 
-	if getOrders.Validate(validate.Check(func() error {
-		return errors.New("this should error")
-	})) == nil {
-		t.Fatal("expected error")
+	getOrders.AssetType = asset.Spot
+	err = getOrders.Validate()
+	if !errors.Is(err, ErrSideIsInvalid) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, ErrSideIsInvalid)
 	}
 
-	if getOrders.Validate(validate.Check(func() error {
+	getOrders.Side = AnySide
+	err = getOrders.Validate()
+	if !errors.Is(err, errUnrecognisedOrderType) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, errUnrecognisedOrderType)
+	}
+
+	var errTestError = errors.New("test error")
+	getOrders.Type = AnyType
+	err = getOrders.Validate(validate.Check(func() error {
+		return errTestError
+	}))
+	if !errors.Is(err, errTestError) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, errTestError)
+	}
+
+	err = getOrders.Validate(validate.Check(func() error {
 		return nil
-	})) == nil {
-		t.Fatal("should output an error since assetType isn't provided")
+	}))
+	if !errors.Is(err, nil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
 	}
 
 	var modifyOrder *Modify
@@ -1380,7 +1481,7 @@ func TestMatchFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	filters := map[int]Filter{
+	filters := map[int]*Filter{
 		0:  {},
 		1:  {Exchange: "Binance"},
 		2:  {InternalOrderID: id},
@@ -1423,15 +1524,15 @@ func TestMatchFilter(t *testing.T) {
 	// empty filter tests
 	emptyFilter := filters[0]
 	for _, o := range orders {
-		if !o.MatchFilter(&emptyFilter) {
+		if !o.MatchFilter(emptyFilter) {
 			t.Error("empty filter should match everything")
 		}
 	}
 
 	tests := map[int]struct {
-		f      Filter
-		o      Detail
-		expRes bool
+		f              *Filter
+		o              Detail
+		expectedResult bool
 	}{
 		0:  {filters[1], orders[1], true},
 		1:  {filters[1], orders[0], false},
@@ -1474,9 +1575,12 @@ func TestMatchFilter(t *testing.T) {
 	}
 	// specific tests
 	for num, tt := range tests {
-		if tt.o.MatchFilter(&tt.f) != tt.expRes {
-			t.Errorf("tests[%v] failed", num)
-		}
+		t.Run(strconv.Itoa(num), func(t *testing.T) {
+			t.Parallel()
+			if tt.o.MatchFilter(tt.f) != tt.expectedResult {
+				t.Errorf("tests[%v] failed", num)
+			}
+		})
 	}
 }
 
@@ -1489,8 +1593,8 @@ func TestIsActive(t *testing.T) {
 	}
 
 	amountTests := map[int]struct {
-		o      Detail
-		expRes bool
+		o              Detail
+		expectedResult bool
 	}{
 		0: {orders[0], false},
 		1: {orders[1], true},
@@ -1499,14 +1603,14 @@ func TestIsActive(t *testing.T) {
 	}
 	// specific tests
 	for num, tt := range amountTests {
-		if tt.o.IsActive() != tt.expRes {
+		if tt.o.IsActive() != tt.expectedResult {
 			t.Errorf("amountTests[%v] failed", num)
 		}
 	}
 
 	statusTests := map[int]struct {
-		o      Detail
-		expRes bool
+		o              Detail
+		expectedResult bool
 	}{
 		// For now force inactive on any status
 		0:  {Detail{Amount: 1.0, ExecutedAmount: 0.0, Status: AnyStatus}, false},
@@ -1531,7 +1635,7 @@ func TestIsActive(t *testing.T) {
 	}
 	// specific tests
 	for num, tt := range statusTests {
-		if tt.o.IsActive() != tt.expRes {
+		if tt.o.IsActive() != tt.expectedResult {
 			t.Fatalf("statusTests[%v] failed", num)
 		}
 	}
@@ -1558,8 +1662,8 @@ func TestIsInactive(t *testing.T) {
 	}
 
 	amountTests := map[int]struct {
-		o      Detail
-		expRes bool
+		o              Detail
+		expectedResult bool
 	}{
 		0: {orders[0], true},
 		1: {orders[1], false},
@@ -1568,14 +1672,14 @@ func TestIsInactive(t *testing.T) {
 	}
 	// specific tests
 	for num, tt := range amountTests {
-		if tt.o.IsInactive() != tt.expRes {
+		if tt.o.IsInactive() != tt.expectedResult {
 			t.Errorf("amountTests[%v] failed", num)
 		}
 	}
 
 	statusTests := map[int]struct {
-		o      Detail
-		expRes bool
+		o              Detail
+		expectedResult bool
 	}{
 		// For now force inactive on any status
 		0:  {Detail{Amount: 1.0, ExecutedAmount: 0.0, Status: AnyStatus}, true},
@@ -1600,7 +1704,7 @@ func TestIsInactive(t *testing.T) {
 	}
 	// specific tests
 	for num, tt := range statusTests {
-		if tt.o.IsInactive() != tt.expRes {
+		if tt.o.IsInactive() != tt.expectedResult {
 			t.Errorf("statusTests[%v] failed", num)
 		}
 	}
@@ -1620,8 +1724,8 @@ func BenchmarkIsInactive(b *testing.B) {
 func TestIsOrderPlaced(t *testing.T) {
 	t.Parallel()
 	statusTests := map[int]struct {
-		o      Detail
-		expRes bool
+		o              Detail
+		expectedResult bool
 	}{
 		0:  {Detail{Amount: 1.0, ExecutedAmount: 0.0, Status: AnyStatus}, false},
 		1:  {Detail{Amount: 1.0, ExecutedAmount: 0.0, Status: New}, true},
@@ -1644,10 +1748,9 @@ func TestIsOrderPlaced(t *testing.T) {
 	}
 	// specific tests
 	for num, tt := range statusTests {
-		tt := tt
 		t.Run(fmt.Sprintf("TEST CASE: %d", num), func(t *testing.T) {
 			t.Parallel()
-			if tt.o.WasOrderPlaced() != tt.expRes {
+			if tt.o.WasOrderPlaced() != tt.expectedResult {
 				t.Errorf("statusTests[%v] failed", num)
 			}
 		})
@@ -1868,4 +1971,183 @@ func TestDeriveCancel(t *testing.T) {
 		cancel.AssetType != asset.Futures {
 		t.Fatalf("unexpected values %+v", cancel)
 	}
+}
+
+func TestGetOrdersRequest_Filter(t *testing.T) {
+	request := new(MultiOrderRequest)
+	request.AssetType = asset.Spot
+	request.Type = AnyType
+	request.Side = AnySide
+
+	var orders = []Detail{
+		{OrderID: "0", Pair: btcusd, AssetType: asset.Spot, Type: Limit, Side: Buy},
+		{OrderID: "1", Pair: btcusd, AssetType: asset.Spot, Type: Limit, Side: Sell},
+		{OrderID: "2", Pair: btcusd, AssetType: asset.Spot, Type: Market, Side: Buy},
+		{OrderID: "3", Pair: btcusd, AssetType: asset.Spot, Type: Market, Side: Sell},
+		{OrderID: "4", Pair: btcusd, AssetType: asset.Futures, Type: Limit, Side: Buy},
+		{OrderID: "5", Pair: btcusd, AssetType: asset.Futures, Type: Limit, Side: Sell},
+		{OrderID: "6", Pair: btcusd, AssetType: asset.Futures, Type: Market, Side: Buy},
+		{OrderID: "7", Pair: btcusd, AssetType: asset.Futures, Type: Market, Side: Sell},
+		{OrderID: "8", Pair: btcltc, AssetType: asset.Spot, Type: Limit, Side: Buy},
+		{OrderID: "9", Pair: btcltc, AssetType: asset.Spot, Type: Limit, Side: Sell},
+		{OrderID: "10", Pair: btcltc, AssetType: asset.Spot, Type: Market, Side: Buy},
+		{OrderID: "11", Pair: btcltc, AssetType: asset.Spot, Type: Market, Side: Sell},
+		{OrderID: "12", Pair: btcltc, AssetType: asset.Futures, Type: Limit, Side: Buy},
+		{OrderID: "13", Pair: btcltc, AssetType: asset.Futures, Type: Limit, Side: Sell},
+		{OrderID: "14", Pair: btcltc, AssetType: asset.Futures, Type: Market, Side: Buy},
+		{OrderID: "15", Pair: btcltc, AssetType: asset.Futures, Type: Market, Side: Sell},
+	}
+
+	shinyAndClean := request.Filter("test", orders)
+	if len(shinyAndClean) != 16 {
+		t.Fatalf("received: '%v' but expected: '%v'", len(shinyAndClean), 16)
+	}
+
+	for x := range shinyAndClean {
+		if strconv.FormatInt(int64(x), 10) != shinyAndClean[x].OrderID {
+			t.Fatalf("received: '%v' but expected: '%v'", shinyAndClean[x].OrderID, int64(x))
+		}
+	}
+
+	request.Pairs = []currency.Pair{btcltc}
+
+	// Kicks off time error
+	request.EndTime = time.Unix(1336, 0)
+	request.StartTime = time.Unix(1337, 0)
+
+	shinyAndClean = request.Filter("test", orders)
+
+	if len(shinyAndClean) != 8 {
+		t.Fatalf("received: '%v' but expected: '%v'", len(shinyAndClean), 8)
+	}
+
+	for x := range shinyAndClean {
+		if strconv.FormatInt(int64(x)+8, 10) != shinyAndClean[x].OrderID {
+			t.Fatalf("received: '%v' but expected: '%v'", shinyAndClean[x].OrderID, int64(x)+8)
+		}
+	}
+}
+
+func TestIsValidOrderSubmissionSide(t *testing.T) {
+	t.Parallel()
+	if IsValidOrderSubmissionSide(UnknownSide) {
+		t.Error("expected false")
+	}
+	if !IsValidOrderSubmissionSide(Buy) {
+		t.Error("expected true")
+	}
+	if IsValidOrderSubmissionSide(CouldNotBuy) {
+		t.Error("expected false")
+	}
+}
+
+func TestAdjustBaseAmount(t *testing.T) {
+	t.Parallel()
+
+	var s *SubmitResponse
+	err := s.AdjustBaseAmount(0)
+	if !errors.Is(err, errOrderSubmitResponseIsNil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, errOrderSubmitResponseIsNil)
+	}
+
+	s = &SubmitResponse{}
+	err = s.AdjustBaseAmount(0)
+	if !errors.Is(err, errAmountIsZero) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, errAmountIsZero)
+	}
+
+	s.Amount = 1.7777777777
+	err = s.AdjustBaseAmount(1.7777777777)
+	if !errors.Is(err, nil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
+	}
+
+	if s.Amount != 1.7777777777 {
+		t.Fatalf("received: '%v' but expected: '%v'", s.Amount, 1.7777777777)
+	}
+
+	s.Amount = 1.7777777777
+	err = s.AdjustBaseAmount(1.777)
+	if !errors.Is(err, nil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
+	}
+
+	if s.Amount != 1.777 {
+		t.Fatalf("received: '%v' but expected: '%v'", s.Amount, 1.777)
+	}
+}
+
+func TestAdjustQuoteAmount(t *testing.T) {
+	t.Parallel()
+
+	var s *SubmitResponse
+	err := s.AdjustQuoteAmount(0)
+	if !errors.Is(err, errOrderSubmitResponseIsNil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, errOrderSubmitResponseIsNil)
+	}
+
+	s = &SubmitResponse{}
+	err = s.AdjustQuoteAmount(0)
+	if !errors.Is(err, errAmountIsZero) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, errAmountIsZero)
+	}
+
+	s.QuoteAmount = 5.222222222222
+	err = s.AdjustQuoteAmount(5.222222222222)
+	if !errors.Is(err, nil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
+	}
+
+	if s.QuoteAmount != 5.222222222222 {
+		t.Fatalf("received: '%v' but expected: '%v'", s.Amount, 5.222222222222)
+	}
+
+	s.QuoteAmount = 5.222222222222
+	err = s.AdjustQuoteAmount(5.22222222)
+	if !errors.Is(err, nil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
+	}
+
+	if s.QuoteAmount != 5.22222222 {
+		t.Fatalf("received: '%v' but expected: '%v'", s.Amount, 5.22222222)
+	}
+}
+
+func TestSideUnmarshal(t *testing.T) {
+	t.Parallel()
+	var s Side
+	assert.NoError(t, s.UnmarshalJSON([]byte(`"SELL"`)), "Quoted valid side okay")
+	assert.Equal(t, Sell, s, "Correctly set order Side")
+	assert.ErrorIs(t, s.UnmarshalJSON([]byte(`"STEAL"`)), ErrSideIsInvalid, "Quoted invalid side errors")
+	var jErr *json.UnmarshalTypeError
+	assert.ErrorAs(t, s.UnmarshalJSON([]byte(`14`)), &jErr, "non-string valid json is rejected")
+}
+
+func TestSideMarshalJSON(t *testing.T) {
+	t.Parallel()
+	b, err := Buy.MarshalJSON()
+	assert.NoError(t, err)
+	assert.Equal(t, `"BUY"`, string(b))
+	b, err = UnknownSide.MarshalJSON()
+	assert.NoError(t, err)
+	assert.Equal(t, `"UNKNOWN"`, string(b))
+}
+
+func TestGetTradeAmount(t *testing.T) {
+	t.Parallel()
+	var s *Submit
+	require.Zero(t, s.GetTradeAmount(protocol.TradingRequirements{}))
+	baseAmount := 420.0
+	quoteAmount := 69.0
+	s = &Submit{Amount: baseAmount, QuoteAmount: quoteAmount}
+	// below will default to base amount with nothing set
+	require.Equal(t, baseAmount, s.GetTradeAmount(protocol.TradingRequirements{}))
+	require.Equal(t, baseAmount, s.GetTradeAmount(protocol.TradingRequirements{SpotMarketOrderAmountPurchaseQuotationOnly: true}))
+	s.AssetType = asset.Spot
+	s.Type = Market
+	s.Side = Buy
+	require.Equal(t, quoteAmount, s.GetTradeAmount(protocol.TradingRequirements{SpotMarketOrderAmountPurchaseQuotationOnly: true}))
+	require.Equal(t, baseAmount, s.GetTradeAmount(protocol.TradingRequirements{SpotMarketOrderAmountSellBaseOnly: true}))
+	s.Side = Sell
+	require.Equal(t, baseAmount, s.GetTradeAmount(protocol.TradingRequirements{SpotMarketOrderAmountSellBaseOnly: true}))
 }

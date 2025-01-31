@@ -3,18 +3,20 @@ package common
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common/file"
 )
 
@@ -233,85 +235,41 @@ func TestIsValidCryptoAddress(t *testing.T) {
 	}
 }
 
-func TestStringSliceDifference(t *testing.T) {
+func TestSliceDifference(t *testing.T) {
 	t.Parallel()
-	originalInputOne := []string{"hello"}
-	originalInputTwo := []string{"hello", "moto"}
-	expectedOutput := []string{"hello moto"}
-	actualResult := StringSliceDifference(originalInputOne, originalInputTwo)
-	if reflect.DeepEqual(expectedOutput, actualResult) {
-		t.Errorf("Expected '%s'. Actual '%s'",
-			expectedOutput, actualResult)
+
+	assert.ElementsMatch(t, []string{"world", "go"}, SliceDifference([]string{"hello", "world"}, []string{"hello", "go"}))
+	assert.ElementsMatch(t, []int64{1, 2, 5, 6}, SliceDifference([]int64{1, 2, 3, 4}, []int64{3, 4, 5, 6}))
+	assert.ElementsMatch(t, []float64{1.1, 4.4}, SliceDifference([]float64{1.1, 2.2, 3.3}, []float64{2.2, 3.3, 4.4}))
+	type mixedType struct {
+		A string
+		B int
 	}
+	assert.ElementsMatch(t, []mixedType{{"A", 1}, {"D", 4}}, SliceDifference([]mixedType{{"A", 1}, {"B", 2}, {"C", 3}}, []mixedType{{"B", 2}, {"C", 3}, {"D", 4}}))
+	assert.ElementsMatch(t, []int{1, 2, 3}, SliceDifference([]int{}, []int{1, 2, 3}))
+	assert.ElementsMatch(t, []int{1, 2, 3}, SliceDifference([]int{1, 2, 3}, []int{}))
+	assert.Empty(t, SliceDifference([]int{}, []int{}))
 }
 
-func TestStringDataContains(t *testing.T) {
+func TestStringSliceContains(t *testing.T) {
 	t.Parallel()
 	originalHaystack := []string{"hello", "world", "USDT", "Contains", "string"}
-	originalNeedle := "USD"
-	anotherNeedle := "thing"
-	actualResult := StringDataContains(originalHaystack, originalNeedle)
-	if expectedOutput := true; actualResult != expectedOutput {
-		t.Errorf("Expected '%v'. Actual '%v'",
-			expectedOutput, actualResult)
-	}
-	actualResult = StringDataContains(originalHaystack, anotherNeedle)
-	if expectedOutput := false; actualResult != expectedOutput {
-		t.Errorf("Expected '%v'. Actual '%v'",
-			expectedOutput, actualResult)
-	}
+	assert.True(t, StringSliceContains(originalHaystack, "USD"), "Should contain 'USD'")
+	assert.False(t, StringSliceContains(originalHaystack, "thing"), "Should not contain 'thing'")
 }
 
-func TestStringDataCompare(t *testing.T) {
+func TestStringSliceCompareInsensitive(t *testing.T) {
 	t.Parallel()
 	originalHaystack := []string{"hello", "WoRld", "USDT", "Contains", "string"}
-	originalNeedle := "WoRld"
-	anotherNeedle := "USD"
-	actualResult := StringDataCompare(originalHaystack, originalNeedle)
-	if expectedOutput := true; actualResult != expectedOutput {
-		t.Errorf("Expected '%v'. Actual '%v'",
-			expectedOutput, actualResult)
-	}
-	actualResult = StringDataCompare(originalHaystack, anotherNeedle)
-	if expectedOutput := false; actualResult != expectedOutput {
-		t.Errorf("Expected '%v'. Actual '%v'",
-			expectedOutput, actualResult)
-	}
+	assert.False(t, StringSliceCompareInsensitive(originalHaystack, "USD"), "Should not contain 'USD'")
+	assert.True(t, StringSliceCompareInsensitive(originalHaystack, "WORLD"), "Should find 'WoRld'")
 }
 
-func TestStringDataCompareUpper(t *testing.T) {
-	t.Parallel()
-	originalHaystack := []string{"hello", "WoRld", "USDT", "Contains", "string"}
-	originalNeedle := "WoRld"
-	anotherNeedle := "WoRldD"
-	actualResult := StringDataCompareInsensitive(originalHaystack, originalNeedle)
-	if expectedOutput := true; actualResult != expectedOutput {
-		t.Errorf("Expected '%v'. Actual '%v'",
-			expectedOutput, actualResult)
-	}
-
-	actualResult = StringDataCompareInsensitive(originalHaystack, anotherNeedle)
-	if expectedOutput := false; actualResult != expectedOutput {
-		t.Errorf("Expected '%v'. Actual '%v'",
-			expectedOutput, actualResult)
-	}
-}
-
-func TestStringDataContainsUpper(t *testing.T) {
+func TestStringSliceContainsInsensitive(t *testing.T) {
 	t.Parallel()
 	originalHaystack := []string{"bLa", "BrO", "sUp"}
-	originalNeedle := "Bla"
-	anotherNeedle := "ning"
-	actualResult := StringDataContainsInsensitive(originalHaystack, originalNeedle)
-	if expectedOutput := true; actualResult != expectedOutput {
-		t.Errorf("Expected '%v'. Actual '%v'",
-			expectedOutput, actualResult)
-	}
-	actualResult = StringDataContainsInsensitive(originalHaystack, anotherNeedle)
-	if expectedOutput := false; actualResult != expectedOutput {
-		t.Errorf("Expected '%v'. Actual '%v'",
-			expectedOutput, actualResult)
-	}
+	assert.True(t, StringSliceContainsInsensitive(originalHaystack, "Bla"), "Should contain 'Bla'")
+	assert.False(t, StringSliceContainsInsensitive(originalHaystack, "ning"), "Should not contain 'ning'")
 }
 
 func TestYesOrNo(t *testing.T) {
@@ -555,87 +513,93 @@ func TestChangePermission(t *testing.T) {
 	}
 }
 
-func initStringSlice(size int) (out []string) {
-	for x := 0; x < size; x++ {
-		out = append(out, "gct-"+strconv.Itoa(x))
-	}
-	return
-}
-
-func TestSplitStringSliceByLimit(t *testing.T) {
+func TestAddPaddingOnUpperCase(t *testing.T) {
 	t.Parallel()
-	slice50 := initStringSlice(50)
-	out := SplitStringSliceByLimit(slice50, 20)
-	if len(out) != 3 {
-		t.Errorf("expected len() to be 3 instead received: %v", len(out))
-	}
-	if len(out[0]) != 20 {
-		t.Errorf("expected len() to be 20 instead received: %v", len(out[0]))
+
+	testCases := []struct {
+		Supplied string
+		Expected string
+	}{
+		{
+			// empty
+		},
+		{
+			Supplied: "ExpectedHTTPRainbow",
+			Expected: "Expected HTTP Rainbow",
+		},
+		{
+			Supplied: "SmellyCatSmellsBad",
+			Expected: "Smelly Cat Smells Bad",
+		},
+		{
+			Supplied: "Gronk",
+			Expected: "Gronk",
+		},
 	}
 
-	out = SplitStringSliceByLimit(slice50, 50)
-	if len(out) != 1 {
-		t.Errorf("expected len() to be 3 instead received: %v", len(out))
-	}
-	if len(out[0]) != 50 {
-		t.Errorf("expected len() to be 20 instead received: %v", len(out[0]))
-	}
-}
-
-func TestInArray(t *testing.T) {
-	t.Parallel()
-	InArray(nil, nil)
-
-	array := [6]int{2, 3, 5, 7, 11, 13}
-	isIn, pos := InArray(5, array)
-	if !isIn {
-		t.Errorf("failed to find the value within the array")
-	}
-	if pos != 2 {
-		t.Errorf("failed return the correct position of the value in the array")
-	}
-	isIn, _ = InArray(1, array)
-	if isIn {
-		t.Errorf("found a non existent value in the array")
-	}
-
-	slice := make([]int, 0)
-	slice = append(append(slice, 5), 3)
-	isIn, pos = InArray(5, slice)
-	if !isIn {
-		t.Errorf("failed to find the value within the slice")
-	}
-	if pos != 0 {
-		t.Errorf("failed return the correct position of the value in the slice")
-	}
-	isIn, pos = InArray(3, slice)
-	if !isIn {
-		t.Errorf("failed to find the value within the slice")
-	}
-	if pos != 1 {
-		t.Errorf("failed return the correct position of the value in the slice")
-	}
-	isIn, _ = InArray(1, slice)
-	if isIn {
-		t.Errorf("found a non existent value in the slice")
+	for x := range testCases {
+		if received := AddPaddingOnUpperCase(testCases[x].Supplied); received != testCases[x].Expected {
+			t.Fatalf("received '%v' but expected '%v'", received, testCases[x].Expected)
+		}
 	}
 }
 
 func TestErrors(t *testing.T) {
 	t.Parallel()
-	var test Errors
-	if test.Error() != "" {
-		t.Fatal("string should be nil")
+
+	e1 := errors.New("inconsistent gravity")
+	e2 := errors.New("barely marginal interest in your story")
+	e3 := errors.New("error making dinner")
+	e4 := errors.New("inconsistent gravy")
+	e5 := errors.New("add vodka")
+
+	// Nil tests
+	assert.NoError(t, AppendError(nil, nil), "Append nil to nil should nil")
+	assert.Same(t, AppendError(e1, nil), e1, "Append nil to e1 should e1")
+	assert.Same(t, AppendError(nil, e2), e2, "Append e2 to nil should e2")
+
+	// Vanila error tests
+	err := AppendError(AppendError(AppendError(nil, e1), e2), e1)
+	assert.ErrorContains(t, err, "inconsistent gravity, barely marginal interest in your story, inconsistent gravity", "Should format consistently")
+	assert.ErrorIs(t, err, e1, "Should have inconsistent gravity")
+	assert.ErrorIs(t, err, e2, "Should be bored by your witty tales")
+
+	err = ExcludeError(err, e2)
+	assert.ErrorIs(t, err, e1, "Should still be bored")
+	assert.NotErrorIs(t, err, e2, "Should not be an e2")
+	me, ok := err.(*multiError)
+	if assert.True(t, ok, "Should be a multiError") {
+		assert.Len(t, me.errs, 2, "Should only have 2 errors")
 	}
-	errTestOne := errors.New("test1")
-	test = append(test, errTestOne)
-	if !errors.Is(test, errTestOne) {
-		t.Fatal("does not match error")
-	}
-	test = append(test, errors.New("test2"))
-	if test.Error() != "test1, test2" {
-		t.Fatal("does not match error")
-	}
+	err = ExcludeError(err, e1)
+	assert.NoError(t, err, "Error should be empty")
+	err = ExcludeError(err, e1)
+	assert.NoError(t, err, "Excluding a nil error should be okay")
+
+	// Wrapped error tests
+	err = fmt.Errorf("%w: %w", e3, fmt.Errorf("%w: %w", e4, e5))
+	assert.ErrorIs(t, ExcludeError(err, e4), e3, "Excluding e4 should retain e3")
+	assert.ErrorIs(t, ExcludeError(err, e4), e5, "Excluding e4 should retain the vanilla co-wrapped e5")
+	assert.NotErrorIs(t, ExcludeError(err, e4), e4, "e4 should be excluded")
+	assert.ErrorIs(t, ExcludeError(err, e5), e3, "Excluding e5 should retain e3")
+	assert.ErrorIs(t, ExcludeError(err, e5), e4, "Excluding e5 should retain the vanilla co-wrapped e4")
+	assert.NotErrorIs(t, ExcludeError(err, e5), e5, "e5 should be excluded")
+
+	// Hybrid tests
+	err = AppendError(fmt.Errorf("%w: %w", e4, e5), e3)
+	assert.ErrorIs(t, ExcludeError(err, e4), e3, "Excluding e4 should retain e3")
+	assert.ErrorIs(t, ExcludeError(err, e4), e5, "Excluding e4 should retain the vanilla co-wrapped e5")
+	assert.NotErrorIs(t, ExcludeError(err, e4), e4, "e4 should be excluded")
+	assert.ErrorIs(t, ExcludeError(err, e5), e3, "Excluding e5 should retain e3")
+	assert.ErrorIs(t, ExcludeError(err, e5), e4, "Excluding e5 should retain the vanilla co-wrapped e4")
+	assert.NotErrorIs(t, ExcludeError(err, e5), e5, "e4 should be excluded")
+
+	// Formatting retention
+	err = AppendError(e1, fmt.Errorf("%w: Run out of `%s`: %w", e3, "sausages", e5))
+	assert.ErrorIs(t, err, e1, "Should be an e1")
+	assert.ErrorIs(t, err, e3, "Should be an e3")
+	assert.ErrorIs(t, err, e5, "Should be an e5")
+	assert.ErrorContains(t, err, "sausages", "Should know about secret sausages")
 }
 
 func TestParseStartEndDate(t *testing.T) {
@@ -670,14 +634,14 @@ func TestParseStartEndDate(t *testing.T) {
 		t.Errorf("received %v, expected %v", err, ErrStartEqualsEnd)
 	}
 
-	err = StartEndTimeCheck(ft, et)
-	if !errors.Is(err, ErrStartAfterTimeNow) {
-		t.Errorf("received %v, expected %v", err, ErrStartAfterTimeNow)
-	}
-
 	err = StartEndTimeCheck(et, pt)
 	if !errors.Is(err, ErrStartAfterEnd) {
 		t.Errorf("received %v, expected %v", err, ErrStartAfterEnd)
+	}
+
+	err = StartEndTimeCheck(ft, ft.Add(time.Hour))
+	if !errors.Is(err, ErrStartAfterTimeNow) {
+		t.Errorf("received %v, expected %v", err, ErrStartAfterTimeNow)
 	}
 
 	err = StartEndTimeCheck(pt, et)
@@ -687,19 +651,29 @@ func TestParseStartEndDate(t *testing.T) {
 }
 
 func TestGetAssertError(t *testing.T) {
-	err := GetAssertError("*[]string", float64(0))
+	err := GetTypeAssertError("*[]string", float64(0))
 	if err.Error() != "type assert failure from float64 to *[]string" {
 		t.Fatal(err)
 	}
 
-	err = GetAssertError("<nil>", nil)
+	err = GetTypeAssertError("<nil>", nil)
 	if err.Error() != "type assert failure from <nil> to <nil>" {
 		t.Fatal(err)
 	}
 
-	err = GetAssertError("bruh", struct{}{})
+	err = GetTypeAssertError("bruh", struct{}{})
 	if !errors.Is(err, ErrTypeAssertFailure) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, ErrTypeAssertFailure)
+	}
+
+	err = GetTypeAssertError("string", struct{}{})
+	if err.Error() != "type assert failure from struct {} to string" {
+		t.Errorf("unexpected error message: %v", err)
+	}
+
+	err = GetTypeAssertError("string", struct{}{}, "bidSize")
+	if err.Error() != "type assert failure from struct {} to string for: bidSize" {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
 
@@ -708,7 +682,7 @@ func TestMatchesEmailPattern(t *testing.T) {
 	if success {
 		t.Error("MatchesEmailPattern() unexpected test validation result")
 	}
-	success = MatchesEmailPattern("someon esemail@gmail")
+	success = MatchesEmailPattern("someone esemail@gmail")
 	if success {
 		t.Error("MatchesEmailPattern() unexpected test validation result")
 	}
@@ -719,5 +693,103 @@ func TestMatchesEmailPattern(t *testing.T) {
 	success = MatchesEmailPattern("someonesemail@email.com")
 	if !success {
 		t.Error("MatchesEmailPattern() unexpected test validation result")
+	}
+}
+
+func TestGenerateRandomString(t *testing.T) {
+	t.Parallel()
+	sample, err := GenerateRandomString(5, NumberCharacters)
+	if err != nil {
+		t.Errorf("GenerateRandomString()  %v", err)
+	}
+	value, err := strconv.Atoi(sample)
+	if len(sample) != 5 || err != nil || value < 0 {
+		t.Error("GenerateRandomString() unexpected test validation result")
+	}
+	sample, err = GenerateRandomString(5)
+	if err != nil {
+		t.Errorf("GenerateRandomString()  %v", err)
+	}
+	values, err := strconv.ParseInt(sample, 10, 64)
+	if len(sample) != 5 || err != nil || values < 0 {
+		t.Error("GenerateRandomString() unexpected test validation result")
+	}
+	_, err = GenerateRandomString(1, "")
+	if err == nil {
+		t.Errorf("GenerateRandomString() expecting %s, but found %v", "invalid characters, character must not be empty", err)
+	}
+	sample, err = GenerateRandomString(0, "")
+	if err != nil && !strings.Contains(err.Error(), "invalid length") {
+		t.Errorf("GenerateRandomString()  %v", err)
+	}
+	if sample != "" {
+		t.Error("GenerateRandomString() unexpected test validation result")
+	}
+}
+
+// TestErrorCollector exercises the error collector
+func TestErrorCollector(t *testing.T) {
+	e := CollectErrors(4)
+	for i := range 4 {
+		go func() {
+			if i%2 == 0 {
+				e.C <- errors.New("Collected error")
+			} else {
+				e.C <- nil
+			}
+			e.Wg.Done()
+		}()
+	}
+	v := e.Collect()
+	errs, ok := v.(*multiError)
+	require.True(t, ok, "Must return a multiError")
+	assert.Len(t, errs.Unwrap(), 2, "Should have 2 errors")
+}
+
+// TestBatch ensures the Batch function does not regress into common behavioural faults if implementation changes
+func TestBatch(t *testing.T) {
+	s := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	b := Batch(s, 3)
+	require.Len(t, b, 4)
+	assert.Len(t, b[0], 3)
+	assert.Len(t, b[3], 1)
+
+	b[0][0] = 42
+	assert.Equal(t, 1, s[0], "Changing the batches must not change the source")
+
+	require.NotPanics(t, func() { Batch(s, -1) }, "Must not panic on negative batch size")
+	done := make(chan any, 1)
+	go func() { done <- Batch(s, 0) }()
+	require.Eventually(t, func() bool { return len(done) > 0 }, time.Second, time.Millisecond, "Batch 0 must not hang")
+
+	for _, i := range []int{-1, 0, 50} {
+		b = Batch(s, i)
+		require.Lenf(t, b, 1, "A batch size of %v should produce a single batch", i)
+		assert.Lenf(t, b[0], len(s), "A batch size of %v should produce a single batch", i)
+	}
+}
+
+type A int
+
+func (a A) String() string {
+	return strconv.Itoa(int(a))
+}
+
+func TestSortStrings(t *testing.T) {
+	assert.Equal(t, []A{1, 2, 5, 6}, SortStrings([]A{6, 2, 5, 1}))
+}
+
+func TestCounter(t *testing.T) {
+	t.Parallel()
+	c := Counter{n: -5}
+	require.Equal(t, int64(1), c.IncrementAndGet())
+	require.Equal(t, int64(2), c.IncrementAndGet())
+}
+
+// 683185328	         1.787 ns/op	       0 B/op	       0 allocs/op
+func BenchmarkCounter(b *testing.B) {
+	c := Counter{}
+	for i := 0; i < b.N; i++ {
+		c.IncrementAndGet()
 	}
 }

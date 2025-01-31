@@ -7,9 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/config"
 )
 
@@ -190,13 +191,16 @@ func TestIsWebsocketServerRunning(t *testing.T) {
 }
 
 func TestGetAllActiveOrderbooks(t *testing.T) {
-	man := SetupExchangeManager()
+	man := NewExchangeManager()
 	bs, err := man.NewExchangeByName("Bitstamp")
 	if err != nil {
 		t.Fatal(err)
 	}
 	bs.SetDefaults()
-	man.Add(bs)
+	err = man.Add(bs)
+	if !errors.Is(err, nil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
+	}
 	resp := getAllActiveOrderbooks(man)
 	if resp == nil {
 		t.Error("expected not nil")
@@ -205,13 +209,16 @@ func TestGetAllActiveOrderbooks(t *testing.T) {
 
 func TestGetAllActiveTickers(t *testing.T) {
 	t.Parallel()
-	man := SetupExchangeManager()
+	man := NewExchangeManager()
 	bs, err := man.NewExchangeByName("Bitstamp")
 	if err != nil {
 		t.Fatal(err)
 	}
 	bs.SetDefaults()
-	man.Add(bs)
+	err = man.Add(bs)
+	if !errors.Is(err, nil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
+	}
 	resp := getAllActiveTickers(man)
 	if resp == nil {
 		t.Error("expected not nil")
@@ -220,13 +227,16 @@ func TestGetAllActiveTickers(t *testing.T) {
 
 func TestGetAllActiveAccounts(t *testing.T) {
 	t.Parallel()
-	man := SetupExchangeManager()
+	man := NewExchangeManager()
 	bs, err := man.NewExchangeByName("Bitstamp")
 	if err != nil {
 		t.Fatal(err)
 	}
 	bs.SetDefaults()
-	man.Add(bs)
+	err = man.Add(bs)
+	if !errors.Is(err, nil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
+	}
 	resp := getAllActiveAccounts(man)
 	if resp == nil {
 		t.Error("expected not nil")
@@ -249,28 +259,29 @@ func TestConfigAllJsonResponse(t *testing.T) {
 	t.Parallel()
 	var c config.Config
 	err := c.LoadConfig(config.TestFile, true)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "LoadConfig should not error")
+
 	resp := makeHTTPGetRequest(t, c)
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Error("Body not readable", err)
-	}
+	assert.NoError(t, err, "ReadAll should not error")
 	err = resp.Body.Close()
-	if err != nil {
-		t.Error("Body not closable", err)
-	}
+	assert.NoError(t, err, "Close body should not error")
 
 	var responseConfig config.Config
-	jsonErr := json.Unmarshal(body, &responseConfig)
-	if jsonErr != nil {
-		t.Error("Response not parse-able as json", err)
+	err = json.Unmarshal(body, &responseConfig)
+	assert.NoError(t, err, "Unmarshal should not error")
+	for i, e := range responseConfig.Exchanges {
+		err = e.CurrencyPairs.SetDelimitersFromConfig()
+		assert.NoError(t, err, "SetDelimitersFromConfig should not error")
+		// Using require here makes it much easier to isolate differences per-exchange than below
+		// We look into pointers separately
+		for a, p := range e.CurrencyPairs.Pairs {
+			require.Equalf(t, c.Exchanges[i].CurrencyPairs.Pairs[a], p, "%s exchange Config CurrencyManager Pairs for asset %s must match api response", e.Name, a)
+		}
+		require.Equalf(t, c.Exchanges[i].CurrencyPairs, e.CurrencyPairs, "%s exchange Config CurrencyManager must match api response", e.Name)
+		require.Equalf(t, c.Exchanges[i], e, "%s exchange Config must match api response", e.Name) // require here makes it much easier to isolate differences than below
 	}
-
-	if !reflect.DeepEqual(responseConfig, c) {
-		t.Error("Json not equal to config")
-	}
+	assert.Equal(t, c, responseConfig, "Config should match api response")
 }
 
 // fakeBot is a basic implementation of the iBot interface used for testing

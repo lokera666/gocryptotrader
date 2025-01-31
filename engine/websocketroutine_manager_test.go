@@ -3,8 +3,11 @@ package engine
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/thrasher-corp/gocryptotrader/config"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
@@ -19,26 +22,21 @@ func TestWebsocketRoutineManagerSetup(t *testing.T) {
 		t.Errorf("error '%v', expected '%v'", err, errNilExchangeManager)
 	}
 
-	_, err = setupWebsocketRoutineManager(SetupExchangeManager(), nil, nil, nil, false)
-	if !errors.Is(err, errNilOrderManager) {
-		t.Errorf("error '%v', expected '%v'", err, errNilOrderManager)
-	}
-
-	_, err = setupWebsocketRoutineManager(SetupExchangeManager(), &OrderManager{}, nil, nil, false)
+	_, err = setupWebsocketRoutineManager(NewExchangeManager(), (*OrderManager)(nil), nil, nil, false)
 	if !errors.Is(err, errNilCurrencyPairSyncer) {
 		t.Errorf("error '%v', expected '%v'", err, errNilCurrencyPairSyncer)
 	}
-	_, err = setupWebsocketRoutineManager(SetupExchangeManager(), &OrderManager{}, &syncManager{}, nil, false)
+	_, err = setupWebsocketRoutineManager(NewExchangeManager(), &OrderManager{}, &SyncManager{}, nil, false)
 	if !errors.Is(err, errNilCurrencyConfig) {
 		t.Errorf("error '%v', expected '%v'", err, errNilCurrencyConfig)
 	}
 
-	_, err = setupWebsocketRoutineManager(SetupExchangeManager(), &OrderManager{}, &syncManager{}, &currency.Config{}, true)
+	_, err = setupWebsocketRoutineManager(NewExchangeManager(), &OrderManager{}, &SyncManager{}, &currency.Config{}, true)
 	if !errors.Is(err, errNilCurrencyPairFormat) {
 		t.Errorf("error '%v', expected '%v'", err, errNilCurrencyPairFormat)
 	}
 
-	m, err := setupWebsocketRoutineManager(SetupExchangeManager(), &OrderManager{}, &syncManager{}, &currency.Config{CurrencyPairFormat: &currency.PairFormat{}}, false)
+	m, err := setupWebsocketRoutineManager(NewExchangeManager(), &OrderManager{}, &SyncManager{}, &currency.Config{CurrencyPairFormat: &currency.PairFormat{}}, false)
 	if !errors.Is(err, nil) {
 		t.Errorf("error '%v', expected '%v'", err, nil)
 	}
@@ -48,7 +46,7 @@ func TestWebsocketRoutineManagerSetup(t *testing.T) {
 }
 
 func TestWebsocketRoutineManagerStart(t *testing.T) {
-	var m *websocketRoutineManager
+	var m *WebsocketRoutineManager
 	err := m.Start()
 	if !errors.Is(err, ErrNilSubsystem) {
 		t.Errorf("error '%v', expected '%v'", err, ErrNilSubsystem)
@@ -57,7 +55,7 @@ func TestWebsocketRoutineManagerStart(t *testing.T) {
 		Uppercase: false,
 		Delimiter: "-",
 	}}
-	m, err = setupWebsocketRoutineManager(SetupExchangeManager(), &OrderManager{}, &syncManager{}, cfg, true)
+	m, err = setupWebsocketRoutineManager(NewExchangeManager(), &OrderManager{}, &SyncManager{}, cfg, true)
 	if !errors.Is(err, nil) {
 		t.Errorf("error '%v', expected '%v'", err, nil)
 	}
@@ -72,12 +70,12 @@ func TestWebsocketRoutineManagerStart(t *testing.T) {
 }
 
 func TestWebsocketRoutineManagerIsRunning(t *testing.T) {
-	var m *websocketRoutineManager
+	var m *WebsocketRoutineManager
 	if m.IsRunning() {
 		t.Error("expected false")
 	}
 
-	m, err := setupWebsocketRoutineManager(SetupExchangeManager(), &OrderManager{}, &syncManager{}, &currency.Config{CurrencyPairFormat: &currency.PairFormat{}}, false)
+	m, err := setupWebsocketRoutineManager(NewExchangeManager(), &OrderManager{}, &SyncManager{}, &currency.Config{CurrencyPairFormat: &currency.PairFormat{}}, false)
 	if !errors.Is(err, nil) {
 		t.Errorf("error '%v', expected '%v'", err, nil)
 	}
@@ -89,19 +87,22 @@ func TestWebsocketRoutineManagerIsRunning(t *testing.T) {
 	if !errors.Is(err, nil) {
 		t.Errorf("error '%v', expected '%v'", err, nil)
 	}
+	for atomic.LoadInt32(&m.state) == startingState {
+		<-time.After(time.Second / 100)
+	}
 	if !m.IsRunning() {
 		t.Error("expected true")
 	}
 }
 
 func TestWebsocketRoutineManagerStop(t *testing.T) {
-	var m *websocketRoutineManager
+	var m *WebsocketRoutineManager
 	err := m.Stop()
 	if !errors.Is(err, ErrNilSubsystem) {
 		t.Errorf("error '%v', expected '%v'", err, ErrNilSubsystem)
 	}
 
-	m, err = setupWebsocketRoutineManager(SetupExchangeManager(), &OrderManager{}, &syncManager{}, &currency.Config{CurrencyPairFormat: &currency.PairFormat{}}, false)
+	m, err = setupWebsocketRoutineManager(NewExchangeManager(), &OrderManager{}, &SyncManager{}, &currency.Config{CurrencyPairFormat: &currency.PairFormat{}}, false)
 	if !errors.Is(err, nil) {
 		t.Errorf("error '%v', expected '%v'", err, nil)
 	}
@@ -123,15 +124,17 @@ func TestWebsocketRoutineManagerStop(t *testing.T) {
 func TestWebsocketRoutineManagerHandleData(t *testing.T) {
 	var exchName = "Bitstamp"
 	var wg sync.WaitGroup
-	em := SetupExchangeManager()
+	em := NewExchangeManager()
 	exch, err := em.NewExchangeByName(exchName)
 	if !errors.Is(err, nil) {
 		t.Fatalf("error '%v', expected '%v'", err, nil)
 	}
 	exch.SetDefaults()
-	em.Add(exch)
-
-	om, err := SetupOrderManager(em, &CommunicationManager{}, &wg, false, false, 0)
+	err = em.Add(exch)
+	if !errors.Is(err, nil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
+	}
+	om, err := SetupOrderManager(em, &CommunicationManager{}, &wg, &config.OrderManager{})
 	if !errors.Is(err, nil) {
 		t.Errorf("error '%v', expected '%v'", err, nil)
 	}
@@ -143,7 +146,7 @@ func TestWebsocketRoutineManagerHandleData(t *testing.T) {
 		Uppercase: false,
 		Delimiter: "-",
 	}}
-	m, err := setupWebsocketRoutineManager(em, om, &syncManager{}, cfg, true)
+	m, err := setupWebsocketRoutineManager(em, om, &SyncManager{}, cfg, true)
 	if !errors.Is(err, nil) {
 		t.Errorf("error '%v', expected '%v'", err, nil)
 	}
@@ -256,13 +259,13 @@ func TestWebsocketRoutineManagerHandleData(t *testing.T) {
 
 func TestRegisterWebsocketDataHandlerWithFunctionality(t *testing.T) {
 	t.Parallel()
-	var m *websocketRoutineManager
+	var m *WebsocketRoutineManager
 	err := m.registerWebsocketDataHandler(nil, false)
 	if !errors.Is(err, ErrNilSubsystem) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, ErrNilSubsystem)
 	}
 
-	m = new(websocketRoutineManager)
+	m = new(WebsocketRoutineManager)
 	m.shutdown = make(chan struct{})
 
 	err = m.registerWebsocketDataHandler(nil, false)
@@ -290,9 +293,9 @@ func TestRegisterWebsocketDataHandlerWithFunctionality(t *testing.T) {
 		t.Fatal("unexpected data handlers registered")
 	}
 
-	mock := stream.New()
+	mock := stream.NewWebsocket()
 	mock.ToRoutine = make(chan interface{})
-	m.started = 1
+	m.state = readyState
 	err = m.websocketDataReceiver(mock)
 	if err != nil {
 		t.Fatal(err)
@@ -312,13 +315,13 @@ func TestRegisterWebsocketDataHandlerWithFunctionality(t *testing.T) {
 
 func TestSetWebsocketDataHandler(t *testing.T) {
 	t.Parallel()
-	var m *websocketRoutineManager
+	var m *WebsocketRoutineManager
 	err := m.setWebsocketDataHandler(nil)
 	if !errors.Is(err, ErrNilSubsystem) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, ErrNilSubsystem)
 	}
 
-	m = new(websocketRoutineManager)
+	m = new(WebsocketRoutineManager)
 	m.shutdown = make(chan struct{})
 
 	err = m.setWebsocketDataHandler(nil)

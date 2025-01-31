@@ -10,22 +10,21 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/binance"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/okx"
 	"github.com/thrasher-corp/gocryptotrader/portfolio"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/banking"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
 const (
-	exchangeName = "Binance"
+	withdrawManagerTestExchangeName = "okx"
 )
 
 func withdrawManagerTestHelper(t *testing.T) (*ExchangeManager, *portfolioManager) {
 	t.Helper()
-	em := SetupExchangeManager()
-	b := new(binance.Binance)
-	b.SetDefaults()
-	cfg, err := b.GetDefaultConfig()
+	em := NewExchangeManager()
+	b := new(okx.Okx)
+	cfg, err := exchange.GetDefaultConfig(context.Background(), b)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +32,10 @@ func withdrawManagerTestHelper(t *testing.T) (*ExchangeManager, *portfolioManage
 	if err != nil {
 		t.Fatal(err)
 	}
-	em.Add(b)
+	err = em.Add(b)
+	if !errors.Is(err, nil) {
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
+	}
 	pm, err := setupPortfolioManager(em, 0, &portfolio.Base{Addresses: []portfolio.Address{}})
 	if err != nil {
 		t.Fatal(err)
@@ -69,9 +71,9 @@ func TestSubmitWithdrawal(t *testing.T) {
 	banking.AppendAccounts(bank)
 
 	req := &withdraw.Request{
-		Exchange:    exchangeName,
+		Exchange:    withdrawManagerTestExchangeName,
 		Currency:    currency.AUD,
-		Description: exchangeName,
+		Description: withdrawManagerTestExchangeName,
 		Amount:      1.0,
 		Type:        withdraw.Fiat,
 		Fiat: withdraw.FiatRequest{
@@ -109,7 +111,7 @@ func TestSubmitWithdrawal(t *testing.T) {
 		t.Errorf("received %v, expected %v", err, withdraw.ErrStrExchangeNotSupportedByAddress)
 	}
 
-	adds[0].SupportedExchanges = exchangeName
+	adds[0].SupportedExchanges = withdrawManagerTestExchangeName
 	_, err = m.SubmitWithdrawal(context.Background(), req)
 	if !errors.Is(err, exchange.ErrAuthenticationSupportNotEnabled) {
 		t.Errorf("received '%v', expected '%v'", err, exchange.ErrAuthenticationSupportNotEnabled)

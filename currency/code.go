@@ -15,6 +15,8 @@ var (
 	ErrCurrencyNotFound = errors.New("currency code not found in list")
 	// ErrCurrencyPairEmpty defines an error if the currency pair is empty
 	ErrCurrencyPairEmpty = errors.New("currency pair is empty")
+	// ErrCurrencyNotSupported defines an error if the currency pair is not supported
+	ErrCurrencyNotSupported = errors.New("currency not supported")
 	// ErrCurrencyPairsEmpty returns when a currency.Pairs has len == 0
 	ErrCurrencyPairsEmpty = errors.New("currency pairs is empty")
 	// EMPTYCODE is an empty currency code
@@ -184,14 +186,7 @@ func (b *BaseCodes) Register(c string, newRole Role) Code {
 		return EMPTYCODE
 	}
 
-	var format bool
-	// Digits fool upper and lower casing. So find first letter and check case.
-	for x := range c {
-		if !unicode.IsDigit(rune(c[x])) {
-			format = unicode.IsUpper(rune(c[x]))
-			break
-		}
-	}
+	isUpperCase := strings.ContainsFunc(c, func(r rune) bool { return unicode.IsLetter(r) && unicode.IsUpper(r) })
 
 	// Force upper string storage and matching
 	c = strings.ToUpper(c)
@@ -216,13 +211,13 @@ func (b *BaseCodes) Register(c string, newRole Role) Code {
 				}
 				stored[x].Role = newRole
 			}
-			return Code{Item: stored[x], UpperCase: format}
+			return Code{Item: stored[x], upperCase: isUpperCase}
 		}
 	}
 
 	newItem := &Item{Symbol: c, Lower: strings.ToLower(c), Role: newRole}
 	b.Items[c] = append(b.Items[c], newItem)
-	return Code{Item: newItem, UpperCase: format}
+	return Code{Item: newItem, upperCase: isUpperCase}
 }
 
 // LoadItem sets item data
@@ -273,25 +268,33 @@ func (c Code) String() string {
 	if c.Item == nil {
 		return ""
 	}
-	if c.UpperCase {
+	if c.upperCase {
 		return c.Item.Symbol
 	}
 	return c.Item.Lower
 }
 
-// Lower converts the code to lowercase formatting
+// Lower flags the Code to use LowerCase formatting, but does not change Symbol
+// If Code cannot be lowercased then it will return Code unchanged
 func (c Code) Lower() Code {
-	c.UpperCase = false
+	if c.Item == nil {
+		return c
+	}
+	c.upperCase = false
 	return c
 }
 
-// Upper converts the code to uppercase formatting
+// Upper flags the Code to use UpperCase formatting, but does not change Symbol
+// If Code cannot be uppercased then it will return Code unchanged
 func (c Code) Upper() Code {
-	c.UpperCase = true
+	if c.Item == nil {
+		return c
+	}
+	c.upperCase = true
 	return c
 }
 
-// UnmarshalJSON comforms type to the umarshaler interface
+// UnmarshalJSON conforms type to the umarshaler interface
 func (c *Code) UnmarshalJSON(d []byte) error {
 	var newcode string
 	err := json.Unmarshal(d, &newcode)
@@ -335,4 +338,12 @@ func (c Code) IsCryptocurrency() bool {
 // IsStableCurrency checks if the currency is a stable currency.
 func (c Code) IsStableCurrency() bool {
 	return c.Item != nil && c.Item.Role == Stable
+}
+
+// Currency allows an item to revert to a code
+func (i *Item) Currency() Code {
+	if i == nil {
+		return EMPTYCODE
+	}
+	return NewCode(i.Symbol)
 }

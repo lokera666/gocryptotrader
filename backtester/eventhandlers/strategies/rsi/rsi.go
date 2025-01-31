@@ -55,15 +55,24 @@ func (s *Strategy) OnSignal(d data.Handler, _ funding.IFundingTransferer, _ port
 	if err != nil {
 		return nil, err
 	}
-	es.SetPrice(d.Latest().GetClosePrice())
 
-	if offset := d.Offset(); offset <= int(s.rsiPeriod.IntPart()) {
+	latest, err := d.Latest()
+	if err != nil {
+		return nil, err
+	}
+
+	es.SetPrice(latest.GetClosePrice())
+
+	if offset := latest.GetOffset(); offset <= s.rsiPeriod.IntPart() {
 		es.AppendReason("Not enough data for signal generation")
 		es.SetDirection(order.DoNothing)
 		return &es, nil
 	}
 
-	dataRange := d.StreamClose()
+	dataRange, err := d.StreamClose()
+	if err != nil {
+		return nil, err
+	}
 	var massagedData []float64
 	massagedData, err = s.massageMissingData(dataRange, es.GetTime())
 	if err != nil {
@@ -71,9 +80,13 @@ func (s *Strategy) OnSignal(d data.Handler, _ funding.IFundingTransferer, _ port
 	}
 	rsi := indicators.RSI(massagedData, int(s.rsiPeriod.IntPart()))
 	latestRSIValue := decimal.NewFromFloat(rsi[len(rsi)-1])
-	if !d.HasDataAtTime(d.Latest().GetTime()) {
+	hasDataAtTime, err := d.HasDataAtTime(latest.GetTime())
+	if err != nil {
+		return nil, err
+	}
+	if !hasDataAtTime {
 		es.SetDirection(order.MissingData)
-		es.AppendReasonf("missing data at %v, cannot perform any actions. RSI %v", d.Latest().GetTime(), latestRSIValue)
+		es.AppendReasonf("missing data at %v, cannot perform any actions. RSI %v", latest.GetTime(), latestRSIValue)
 		return &es, nil
 	}
 
@@ -101,20 +114,24 @@ func (s *Strategy) SupportsSimultaneousProcessing() bool {
 // in allowing a strategy to only place an order for X currency if Y currency's price is Z
 func (s *Strategy) OnSimultaneousSignals(d []data.Handler, _ funding.IFundingTransferer, _ portfolio.Handler) ([]signal.Event, error) {
 	var resp []signal.Event
-	var errs gctcommon.Errors
+	var errs error
 	for i := range d {
+		latest, err := d[i].Latest()
+		if err != nil {
+			return nil, err
+		}
 		sigEvent, err := s.OnSignal(d[i], nil, nil)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("%v %v %v %w", d[i].Latest().GetExchange(), d[i].Latest().GetAssetType(), d[i].Latest().Pair(), err))
+			errs = gctcommon.AppendError(errs, fmt.Errorf("%v %v %v %w",
+				latest.GetExchange(),
+				latest.GetAssetType(),
+				latest.Pair(),
+				err))
 		} else {
 			resp = append(resp, sigEvent)
 		}
 	}
-
-	if len(errs) > 0 {
-		return nil, errs
-	}
-	return resp, nil
+	return resp, errs
 }
 
 // SetCustomSettings allows a user to modify the RSI limits in their config
@@ -171,7 +188,7 @@ func (s *Strategy) massageMissingData(data []decimal.Decimal, t time.Time) ([]fl
 		if missingDataStreak >= s.rsiPeriod.IntPart() {
 			return nil, fmt.Errorf("missing data exceeds RSI period length of %v at %s and will distort results. %w",
 				s.rsiPeriod,
-				t.Format(gctcommon.SimpleTimeFormat),
+				t.Format(time.DateTime),
 				base.ErrTooMuchBadData)
 		}
 		resp[i] = data[i].InexactFloat64()

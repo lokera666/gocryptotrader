@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/thrasher-corp/gocryptotrader/common/crypto"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/nonce"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 )
@@ -412,7 +413,7 @@ func (a *Alphapoint) CreateOrder(ctx context.Context, symbol, side, orderType st
 }
 
 // ModifyExistingOrder modifies and existing Order
-// OrderId - tracked order id number
+// OrderID - tracked order id number
 // symbol - Instrument code (ex: “BTCUSD”)
 // modifyAction - “0” or “1”
 // “0” means "Move to top", which will modify the order price to the top of the
@@ -444,7 +445,7 @@ func (a *Alphapoint) ModifyExistingOrder(ctx context.Context, symbol string, ord
 
 // CancelExistingOrder cancels an order that has not been executed.
 // symbol - Instrument code (ex: “BTCUSD”)
-// OrderId - Order id (ex: 1000)
+// OrderID - Order id (ex: 1000)
 func (a *Alphapoint) CancelExistingOrder(ctx context.Context, orderID int64, omsid string) (int64, error) {
 	req := make(map[string]interface{})
 	req["OrderId"] = orderID
@@ -467,7 +468,7 @@ func (a *Alphapoint) CancelExistingOrder(ctx context.Context, orderID int64, oms
 	return response.CancelOrderID, nil
 }
 
-// CancelAllExistingOrders cancels all open orders by symbol
+// CancelAllExistingOrders cancels all open orders by symbol.
 // symbol - Instrument code (ex: “BTCUSD”)
 func (a *Alphapoint) CancelAllExistingOrders(ctx context.Context, omsid string) error {
 	req := make(map[string]interface{})
@@ -540,7 +541,7 @@ func (a *Alphapoint) GetOrderFee(ctx context.Context, symbol, side string, quant
 }
 
 // SendHTTPRequest sends an unauthenticated HTTP request
-func (a *Alphapoint) SendHTTPRequest(ctx context.Context, ep exchange.URL, method, path string, data map[string]interface{}, result interface{}) error {
+func (a *Alphapoint) SendHTTPRequest(_ context.Context, ep exchange.URL, method, path string, data map[string]interface{}, result interface{}) error {
 	endpoint, err := a.API.Endpoints.GetURL(ep)
 	if err != nil {
 		return err
@@ -566,7 +567,7 @@ func (a *Alphapoint) SendHTTPRequest(ctx context.Context, ep exchange.URL, metho
 	return a.SendPayload(context.Background(), request.Unset, func() (*request.Item, error) {
 		item.Body = bytes.NewBuffer(PayloadJSON)
 		return item, nil
-	})
+	}, request.UnauthenticatedRequest)
 }
 
 // SendAuthenticatedHTTPRequest sends an authenticated request
@@ -581,7 +582,7 @@ func (a *Alphapoint) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchan
 		return err
 	}
 
-	n := a.Requester.GetNonce(true)
+	n := a.Requester.GetNonce(nonce.UnixNano)
 
 	headers := make(map[string]string)
 	headers["Content-Type"] = "application/json"
@@ -608,7 +609,6 @@ func (a *Alphapoint) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchan
 		Path:          path,
 		Headers:       headers,
 		Result:        result,
-		AuthRequest:   true,
 		NonceEnabled:  true,
 		Verbose:       a.Verbose,
 		HTTPDebugging: a.HTTPDebugging,
@@ -617,5 +617,5 @@ func (a *Alphapoint) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchan
 	return a.SendPayload(context.Background(), request.Unset, func() (*request.Item, error) {
 		item.Body = bytes.NewBuffer(PayloadJSON)
 		return item, nil
-	})
+	}, request.AuthenticatedRequest)
 }

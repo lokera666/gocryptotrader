@@ -6,7 +6,7 @@
 [![Build Status](https://github.com/thrasher-corp/gocryptotrader/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/thrasher-corp/gocryptotrader/actions/workflows/tests.yml)
 [![Software License](https://img.shields.io/badge/License-MIT-orange.svg?style=flat-square)](https://github.com/thrasher-corp/gocryptotrader/blob/master/LICENSE)
 [![GoDoc](https://godoc.org/github.com/thrasher-corp/gocryptotrader?status.svg)](https://godoc.org/github.com/thrasher-corp/gocryptotrader/backtester)
-[![Coverage Status](http://codecov.io/github/thrasher-corp/gocryptotrader/coverage.svg?branch=master)](http://codecov.io/github/thrasher-corp/gocryptotrader?branch=master)
+[![Coverage Status](https://codecov.io/gh/thrasher-corp/gocryptotrader/graph/badge.svg?token=41784B23TS)](https://codecov.io/gh/thrasher-corp/gocryptotrader)
 [![Go Report Card](https://goreportcard.com/badge/github.com/thrasher-corp/gocryptotrader)](https://goreportcard.com/report/github.com/thrasher-corp/gocryptotrader)
 
 
@@ -14,7 +14,7 @@ This backtester package is part of the GoCryptoTrader codebase.
 
 ## This is still in active development
 
-You can track ideas, planned features and what's in progress on this Trello board: [https://trello.com/b/ZAhMhpOy/gocryptotrader](https://trello.com/b/ZAhMhpOy/gocryptotrader).
+You can track ideas, planned features and what's in progress on our [GoCryptoTrader Kanban board](https://github.com/orgs/thrasher-corp/projects/3).
 
 Join our slack to discuss all things related to GoCryptoTrader! [GoCryptoTrader Slack](https://join.slack.com/t/gocryptotrader/shared_invite/enQtNTQ5NDAxMjA2Mjc5LTc5ZDE1ZTNiOGM3ZGMyMmY1NTAxYWZhODE0MWM5N2JlZDk1NDU0YTViYzk4NTk3OTRiMDQzNGQ1YTc4YmRlMTk)
 
@@ -45,20 +45,23 @@ An event-driven backtesting tool to test and iterate trading strategies using hi
 - Fund transfer. At a strategy level, transfer funds between exchanges to allow for complex strategy design
 - Backtesting support for futures asset types
 - Example cash and carry spot futures strategy
-- Long-running application
-- GRPC server implementation
+- Long-running application as a GRPC server
+- Custom strategy plugins
+- Live data source trading. Traders can move their back tested strategies and use them against current live data
 
 ## Planned Features
 We welcome pull requests on any feature for the Backtester! We will be especially appreciative of any contribution towards the following planned features:
 
 | Feature | Description |
 |---------|-------------|
+| Perpetual futures support | Accounting for hourly funding rates in user's overall positions allows for much greater strategic depth |
+| Margin borrowing support | Allowing strategies to utilise margin borrowing to have larger positions and handling borrow rate payments |
 | Leverage support | Leverage is a good way to enhance profit and loss and is important to include in strategies |
+| Live ticker data | A potential feature as live trading works off candle data which is only processed at intervals. Adding ticker data as a strategic source allows for faster decision making |
+| Live orderbook data | Processing orders based off the latest orderbook data allows for much more accurate order placement and reduces surprise slippage |
 | Enhance config-builder | Create an application that can create strategy configs in a more visual manner and execute them via GRPC to allow for faster customisation of strategies |
 | Save Backtester results to database | This will allow for easier comparison of results over time |
 | Backtester result comparison report | Providing an executive summary of Backtester database results |
-| Currency correlation | Compare multiple exchange, asset, currencies for a candle interval against indicators to highlight correlated pairs for use in pairs trading |
-| Improve live trading functionality | Live trading is currently only a proof Of concept. Adding live support for running multiple currencies and running off orderbook data will allow for esteemed traders to use their backtested strategies |
 
 
 ## How does it work?

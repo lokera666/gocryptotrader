@@ -14,6 +14,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/protocol"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 )
 
 // Endpoint authentication types
@@ -111,8 +112,8 @@ type FeeBuilder struct {
 	Amount        float64
 }
 
-// FundHistory holds exchange funding history data
-type FundHistory struct {
+// FundingHistory holds exchange funding history data
+type FundingHistory struct {
 	ExchangeName      string
 	Status            string
 	TransferID        string
@@ -149,8 +150,11 @@ type WithdrawalHistory struct {
 // Features stores the supported and enabled features
 // for the exchange
 type Features struct {
-	Supports FeaturesSupported
-	Enabled  FeaturesEnabled
+	Supports             FeaturesSupported
+	Enabled              FeaturesEnabled
+	Subscriptions        subscription.List
+	CurrencyTranslations currency.Translations
+	TradingRequirements  protocol.TradingRequirements
 }
 
 // FeaturesEnabled stores the exchange enabled features
@@ -164,12 +168,43 @@ type FeaturesEnabled struct {
 
 // FeaturesSupported stores the exchanges supported features
 type FeaturesSupported struct {
-	REST                  bool
-	RESTCapabilities      protocol.Features
-	Websocket             bool
-	WebsocketCapabilities protocol.Features
-	WithdrawPermissions   uint32
-	Kline                 kline.ExchangeCapabilitiesSupported
+	REST                       bool
+	RESTCapabilities           protocol.Features
+	Websocket                  bool
+	WebsocketCapabilities      protocol.Features
+	WithdrawPermissions        uint32
+	Kline                      kline.ExchangeCapabilitiesSupported
+	MaximumOrderHistory        time.Duration
+	FuturesCapabilities        FuturesCapabilities
+	OfflineFuturesCapabilities FuturesCapabilities
+}
+
+// FuturesCapabilities stores the exchange's futures capabilities
+type FuturesCapabilities struct {
+	FundingRates                    bool
+	MaximumFundingRateHistory       time.Duration
+	FundingRateBatching             map[asset.Item]bool
+	SupportedFundingRateFrequencies map[kline.Interval]bool
+	Positions                       bool
+	OrderManagerPositionTracking    bool
+	Collateral                      bool
+	CollateralMode                  bool
+	Leverage                        bool
+	OpenInterest                    OpenInterestSupport
+}
+
+// OpenInterestSupport helps breakdown a feature and how it is supported
+type OpenInterestSupport struct {
+	Supported          bool
+	SupportedViaTicker bool
+	SupportsRestBatch  bool
+}
+
+// MarginCapabilities stores the exchange's margin capabilities
+type MarginCapabilities struct {
+	SetMarginType        bool
+	ChangePositionMargin bool
+	GetMarginRateHistory bool
 }
 
 // Endpoints stores running url endpoints for exchanges
@@ -187,20 +222,10 @@ type API struct {
 
 	Endpoints *Endpoints
 
-	credentials *account.Credentials
+	credentials account.Credentials
 	credMu      sync.RWMutex
 
-	CredentialsValidator CredentialsValidator
-}
-
-// CredentialsValidator determines what is required
-// to make authenticated requests for an exchange
-type CredentialsValidator struct {
-	RequiresPEM                bool
-	RequiresKey                bool
-	RequiresSecret             bool
-	RequiresClientID           bool
-	RequiresBase64DecodeSecret bool
+	CredentialsValidator config.APICredentialsValidatorConfig
 }
 
 // Base stores the individual exchange information
@@ -243,6 +268,7 @@ const (
 	RestUSDTMargined
 	RestCoinMargined
 	RestFutures
+	RestFuturesSupplementary
 	RestUSDCMargined
 	RestSwap
 	RestSandbox
@@ -259,6 +285,7 @@ const (
 	restCoinMarginedFuturesURL    = "RestCoinMarginedFuturesURL"
 	restUSDCMarginedFuturesURL    = "RestUSDCMarginedFuturesURL"
 	restFuturesURL                = "RestFuturesURL"
+	restFuturesSupplementaryURL   = "RestFuturesSupplementaryURL"
 	restSandboxURL                = "RestSandboxURL"
 	restSwapURL                   = "RestSwapURL"
 	websocketSpotURL              = "WebsocketSpotURL"
@@ -269,11 +296,13 @@ const (
 	edgeCase3URL                  = "EdgeCase3URL"
 )
 
-var keyURLs = []URL{RestSpot,
+var keyURLs = []URL{
+	RestSpot,
 	RestSpotSupplementary,
 	RestUSDTMargined,
 	RestCoinMargined,
 	RestFutures,
+	RestFuturesSupplementary,
 	RestUSDCMargined,
 	RestSwap,
 	RestSandbox,

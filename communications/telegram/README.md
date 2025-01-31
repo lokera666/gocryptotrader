@@ -6,7 +6,7 @@
 [![Build Status](https://github.com/thrasher-corp/gocryptotrader/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/thrasher-corp/gocryptotrader/actions/workflows/tests.yml)
 [![Software License](https://img.shields.io/badge/License-MIT-orange.svg?style=flat-square)](https://github.com/thrasher-corp/gocryptotrader/blob/master/LICENSE)
 [![GoDoc](https://godoc.org/github.com/thrasher-corp/gocryptotrader?status.svg)](https://godoc.org/github.com/thrasher-corp/gocryptotrader/communications/telegram)
-[![Coverage Status](http://codecov.io/github/thrasher-corp/gocryptotrader/coverage.svg?branch=master)](http://codecov.io/github/thrasher-corp/gocryptotrader?branch=master)
+[![Coverage Status](https://codecov.io/gh/thrasher-corp/gocryptotrader/graph/badge.svg?token=41784B23TS)](https://codecov.io/gh/thrasher-corp/gocryptotrader)
 [![Go Report Card](https://goreportcard.com/badge/github.com/thrasher-corp/gocryptotrader)](https://goreportcard.com/report/github.com/thrasher-corp/gocryptotrader)
 
 
@@ -14,7 +14,7 @@ This telegram package is part of the GoCryptoTrader codebase.
 
 ## This is still in active development
 
-You can track ideas, planned features and what's in progress on this Trello board: [https://trello.com/b/ZAhMhpOy/gocryptotrader](https://trello.com/b/ZAhMhpOy/gocryptotrader).
+You can track ideas, planned features and what's in progress on our [GoCryptoTrader Kanban board](https://github.com/orgs/thrasher-corp/projects/3).
 
 Join our slack to discuss all things related to GoCryptoTrader! [GoCryptoTrader Slack](https://join.slack.com/t/gocryptotrader/shared_invite/enQtNTQ5NDAxMjA2Mjc5LTc5ZDE1ZTNiOGM3ZGMyMmY1NTAxYWZhODE0MWM5N2JlZDk1NDU0YTViYzk4NTk3OTRiMDQzNGQ1YTc4YmRlMTk)
 
@@ -35,22 +35,28 @@ developed by Telegram Messenger LLP
 
 	+ [Enable via configuration](https://github.com/thrasher-corp/gocryptotrader/tree/master/config#enable-communications-via-config-example)
 
-	+ Individual package example below:
+	+ See the individual package example below. NOTE: For privacy considerations, it's not possible to directly request a user's ID through the 
+	Telegram Bot API unless the user interacts first. The user must message the bot directly. This allows the bot to identify and save the user's ID. 
+	If this wasn't set initially, the user's ID will be stored by this package following a successful authentication when any supported command is issued.
+	
 	```go
 	import (
-	"github.com/thrasher-corp/gocryptotrader/communications/telegram"
-	"github.com/thrasher-corp/gocryptotrader/config"
+		"github.com/thrasher-corp/gocryptotrader/communications/base"
+		"github.com/thrasher-corp/gocryptotrader/communications/telegram"
 	)
 
 	t := new(telegram.Telegram)
 
 	// Define Telegram configuration
-	commsConfig := config.CommunicationsConfig{TelegramConfig: config.TelegramConfig{
-	Name: "Telegram",
-		Enabled: true,
-		Verbose: false,
-	VerificationToken: "token",
-	}}
+	commsConfig := &base.CommunicationsConfig{
+		TelegramConfig: base.TelegramConfig{
+			Name:              "Telegram",
+			Enabled:           true,
+			Verbose:           false,
+			VerificationToken: "token",
+			AuthorisedClients: map[string]int64{"pepe": 0}, // 0 represents a placeholder for the user's ID, see note above for more info.
+		},
+	}
 
 	t.Setup(commsConfig)
 	err := t.Connect
@@ -64,7 +70,6 @@ via Telegram:
 /start			- Will authenticate your ID
 /status			- Displays the status of the bot
 /help			- Displays current command list
-/settings		- Displays current bot settings
 ```
 
 ### Please click GoDocs chevron above to view current GoDoc information for this package

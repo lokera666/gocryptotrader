@@ -3,33 +3,27 @@ package asset
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 
-	"github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestString(t *testing.T) {
 	t.Parallel()
-	a := Spot
-	if a.String() != "spot" {
-		t.Fatal("TestString returned an unexpected result")
-	}
-
-	a = 0
-	if a.String() != "" {
-		t.Fatal("TestString returned an unexpected result")
+	for a := range All {
+		if a == 0 {
+			assert.Empty(t, a.String(), "Empty.String should return empty")
+		} else {
+			assert.NotEmptyf(t, a.String(), "%s.String should return empty", a)
+		}
 	}
 }
 
-func TestToStringArray(t *testing.T) {
+func TestStrings(t *testing.T) {
 	t.Parallel()
-	a := Items{Spot, Futures}
-	result := a.Strings()
-	for x := range a {
-		if !common.StringDataCompare(result, a[x].String()) {
-			t.Fatal("TestToStringArray returned an unexpected result")
-		}
-	}
+	assert.ElementsMatch(t, Items{Spot, Futures}.Strings(), []string{"spot", "futures"})
 }
 
 func TestContains(t *testing.T) {
@@ -64,12 +58,37 @@ func TestJoinToString(t *testing.T) {
 
 func TestIsValid(t *testing.T) {
 	t.Parallel()
-	if Item(0).IsValid() {
-		t.Fatal("TestIsValid returned an unexpected result")
+	for a := range All {
+		if a.String() == "" {
+			require.Falsef(t, a.IsValid(), "IsValid must return false with non-asset value %d", a)
+		} else {
+			require.Truef(t, a.IsValid(), "IsValid must return true for %s", a)
+		}
 	}
+	require.False(t, All.IsValid(), "IsValid must return false for All")
+}
 
-	if !Spot.IsValid() {
-		t.Fatal("TestIsValid returned an unexpected result")
+func TestIsFutures(t *testing.T) {
+	t.Parallel()
+	valid := []Item{PerpetualContract, PerpetualSwap, Futures, DeliveryFutures, UpsideProfitContract, DownsideProfitContract, CoinMarginedFutures, USDTMarginedFutures, USDCMarginedFutures, FutureCombo, LinearContract}
+	for a := range All {
+		if slices.Contains(valid, a) {
+			require.Truef(t, a.IsFutures(), "IsFutures must return true for %s", a)
+		} else {
+			require.Falsef(t, a.IsFutures(), "IsFutures must return false for non-asset value %d (%s)", a, a)
+		}
+	}
+}
+
+func TestIsOptions(t *testing.T) {
+	t.Parallel()
+	valid := []Item{Options, OptionCombo}
+	for a := range All {
+		if slices.Contains(valid, a) {
+			require.Truef(t, a.IsOptions(), "IsOptions must return true for %s", a)
+		} else {
+			require.Falsef(t, a.IsOptions(), "IsOptions must return false for non-asset value %d (%s)", a, a)
+		}
 	}
 }
 
@@ -93,18 +112,23 @@ func TestNew(t *testing.T) {
 		{Input: "CoinMarginedFutures", Expected: CoinMarginedFutures},
 		{Input: "USDTMarginedFutures", Expected: USDTMarginedFutures},
 		{Input: "USDCMarginedFutures", Expected: USDCMarginedFutures},
+		{Input: "Options", Expected: Options},
+		{Input: "Option", Expected: Options},
+		{Input: "Future", Error: ErrNotSupported},
+		{Input: "option_combo", Expected: OptionCombo},
+		{Input: "future_combo", Expected: FutureCombo},
+		{Input: "linearContract", Expected: LinearContract},
 	}
 
-	for x := range cases {
-		tt := cases[x]
+	for _, tt := range cases {
 		t.Run("", func(t *testing.T) {
 			t.Parallel()
 			returned, err := New(tt.Input)
 			if !errors.Is(err, tt.Error) {
-				t.Fatalf("receieved: '%v' but expected: '%v'", err, tt.Error)
+				t.Fatalf("received: '%v' but expected: '%v'", err, tt.Error)
 			}
 			if returned != tt.Expected {
-				t.Fatalf("receieved: '%v' but expected: '%v'", returned, tt.Expected)
+				t.Fatalf("received: '%v' but expected: '%v'", returned, tt.Expected)
 			}
 		})
 	}
@@ -116,81 +140,10 @@ func TestSupported(t *testing.T) {
 	if len(supportedList) != len(s) {
 		t.Fatal("TestSupported mismatched lengths")
 	}
-	for i := 0; i < len(supportedList); i++ {
+	for i := range supportedList {
 		if s[i] != supportedList[i] {
 			t.Fatal("TestSupported returned an unexpected result")
 		}
-	}
-}
-
-func TestIsFutures(t *testing.T) {
-	t.Parallel()
-	type scenario struct {
-		item      Item
-		isFutures bool
-	}
-	scenarios := []scenario{
-		{
-			item:      Spot,
-			isFutures: false,
-		},
-		{
-			item:      Margin,
-			isFutures: false,
-		},
-		{
-			item:      MarginFunding,
-			isFutures: false,
-		},
-		{
-			item:      Index,
-			isFutures: false,
-		},
-		{
-			item:      Binary,
-			isFutures: false,
-		},
-		{
-			item:      PerpetualContract,
-			isFutures: true,
-		},
-		{
-			item:      PerpetualSwap,
-			isFutures: true,
-		},
-		{
-			item:      Futures,
-			isFutures: true,
-		},
-		{
-			item:      UpsideProfitContract,
-			isFutures: true,
-		},
-		{
-			item:      DownsideProfitContract,
-			isFutures: true,
-		},
-		{
-			item:      CoinMarginedFutures,
-			isFutures: true,
-		},
-		{
-			item:      USDTMarginedFutures,
-			isFutures: true,
-		},
-		{
-			item:      USDCMarginedFutures,
-			isFutures: true,
-		},
-	}
-	for _, s := range scenarios {
-		testScenario := s
-		t.Run(testScenario.item.String(), func(t *testing.T) {
-			t.Parallel()
-			if testScenario.item.IsFutures() != testScenario.isFutures {
-				t.Errorf("expected %v isFutures to be %v", testScenario.item, testScenario.isFutures)
-			}
-		})
 	}
 }
 
@@ -198,7 +151,7 @@ func TestUnmarshalMarshal(t *testing.T) {
 	t.Parallel()
 	data, err := json.Marshal(Item(0))
 	if !errors.Is(err, nil) {
-		t.Fatalf("receieved: '%v' but expected: '%v'", err, nil)
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
 	}
 
 	if string(data) != `""` {
@@ -207,7 +160,7 @@ func TestUnmarshalMarshal(t *testing.T) {
 
 	data, err = json.Marshal(Spot)
 	if !errors.Is(err, nil) {
-		t.Fatalf("receieved: '%v' but expected: '%v'", err, nil)
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
 	}
 
 	if string(data) != `"spot"` {
@@ -218,7 +171,7 @@ func TestUnmarshalMarshal(t *testing.T) {
 
 	err = json.Unmarshal(data, &spot)
 	if !errors.Is(err, nil) {
-		t.Fatalf("receieved: '%v' but expected: '%v'", err, nil)
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
 	}
 
 	if spot != Spot {
@@ -227,23 +180,23 @@ func TestUnmarshalMarshal(t *testing.T) {
 
 	err = json.Unmarshal([]byte(`"confused"`), &spot)
 	if !errors.Is(err, ErrNotSupported) {
-		t.Fatalf("receieved: '%v' but expected: '%v'", err, ErrNotSupported)
+		t.Fatalf("received: '%v' but expected: '%v'", err, ErrNotSupported)
 	}
 
 	err = json.Unmarshal([]byte(`""`), &spot)
 	if !errors.Is(err, nil) {
-		t.Fatalf("receieved: '%v' but expected: '%v'", err, nil)
+		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
 	}
 
 	err = json.Unmarshal([]byte(`123`), &spot)
 	if errors.Is(err, nil) {
-		t.Fatalf("receieved: '%v' but expected: '%v'", nil, "an error")
+		t.Fatalf("received: '%v' but expected: '%v'", nil, "an error")
 	}
 }
 
 func TestUseDefault(t *testing.T) {
 	t.Parallel()
 	if UseDefault() != Spot {
-		t.Fatalf("receieved: '%v' but expected: '%v'", UseDefault(), Spot)
+		t.Fatalf("received: '%v' but expected: '%v'", UseDefault(), Spot)
 	}
 }

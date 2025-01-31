@@ -6,22 +6,32 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"text/template"
 	"time"
+	"unicode"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/common/convert"
+	"github.com/thrasher-corp/gocryptotrader/common/key"
 	"github.com/thrasher-corp/gocryptotrader/config"
 	"github.com/thrasher-corp/gocryptotrader/currency"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/account"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/collateral"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/currencystate"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/fundingrate"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/futures"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/margin"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/protocol"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 	"github.com/thrasher-corp/gocryptotrader/log"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/banking"
@@ -37,15 +47,30 @@ const (
 	DefaultWebsocketResponseMaxLimit = time.Second * 7
 	// DefaultWebsocketOrderbookBufferLimit is the maximum number of orderbook updates that get stored before being applied
 	DefaultWebsocketOrderbookBufferLimit = 5
-	// ResetConfigPairsWarningMessage is displayed when a currency pair format in the config needs to be updated
-	ResetConfigPairsWarningMessage = "%s Enabled and available pairs for %s reset due to config upgrade, please enable the ones you would like to use again. Defaulting to %v"
+)
+
+// Public Errors
+var (
+	ErrExchangeNameIsEmpty   = errors.New("exchange name is empty")
+	ErrSymbolCannotBeMatched = errors.New("symbol cannot be matched")
 )
 
 var (
 	errEndpointStringNotFound            = errors.New("endpoint string not found")
 	errConfigPairFormatRequiresDelimiter = errors.New("config pair format requires delimiter")
-	errSymbolCannotBeMatched             = errors.New("symbol cannot be matched")
+	errSetDefaultsNotCalled              = errors.New("set defaults not called")
+	errExchangeIsNil                     = errors.New("exchange is nil")
 )
+
+// SetRequester sets the instance of the requester
+func (b *Base) SetRequester(r *request.Requester) error {
+	if r == nil {
+		return fmt.Errorf("%s cannot set requester, no requester provided", b.Name)
+	}
+
+	b.Requester = r
+	return nil
+}
 
 // SetClientProxyAddress sets a proxy address for REST and websocket requests
 func (b *Base) SetClientProxyAddress(addr string) error {
@@ -131,12 +156,35 @@ func (b *Base) SetFeatureDefaults() {
 			b.SetFillsFeedStatus(b.Config.Features.Enabled.FillsFeed)
 		}
 
+		b.SetSubscriptionsFromConfig()
+
 		b.Features.Enabled.AutoPairUpdates = b.Config.Features.Enabled.AutoPairUpdates
 	}
 }
 
+// SetSubscriptionsFromConfig sets the subscriptions from config
+// If the subscriptions config is empty then Config will be updated from the exchange subscriptions,
+// allowing e.SetDefaults to set default subscriptions for an exchange to update user's config
+// Subscriptions not Enabled are skipped, meaning that e.Features.Subscriptions only contains Enabled subscriptions
+func (b *Base) SetSubscriptionsFromConfig() {
+	b.settingsMutex.Lock()
+	defer b.settingsMutex.Unlock()
+	if len(b.Config.Features.Subscriptions) == 0 {
+		// Set config from the defaults, including any disabled subscriptions
+		b.Config.Features.Subscriptions = b.Features.Subscriptions
+	}
+	b.Features.Subscriptions = b.Config.Features.Subscriptions.Enabled()
+	if b.Verbose {
+		names := make([]string, 0, len(b.Features.Subscriptions))
+		for _, s := range b.Features.Subscriptions {
+			names = append(names, s.Channel)
+		}
+		log.Debugf(log.ExchangeSys, "Set %v 'Subscriptions' to %v", b.Name, strings.Join(names, ", "))
+	}
+}
+
 // SupportsRESTTickerBatchUpdates returns whether or not the
-// exhange supports REST batch ticker fetching
+// exchange supports REST batch ticker fetching
 func (b *Base) SupportsRESTTickerBatchUpdates() bool {
 	return b.Features.Supports.RESTCapabilities.TickerBatching
 }
@@ -182,18 +230,18 @@ func (b *Base) GetPairAssetType(c currency.Pair) (asset.Item, error) {
 // types. e.g. "BTC-USD" Spot and "BTC_USD" PERP request formatted.
 func (b *Base) GetPairAndAssetTypeRequestFormatted(symbol string) (currency.Pair, asset.Item, error) {
 	if symbol == "" {
-		return currency.Pair{}, asset.Empty, currency.ErrCurrencyPairEmpty
+		return currency.EMPTYPAIR, asset.Empty, currency.ErrCurrencyPairEmpty
 	}
 	assetTypes := b.GetAssetTypes(true)
 	for i := range assetTypes {
 		pFmt, err := b.GetPairFormat(assetTypes[i], true)
 		if err != nil {
-			return currency.Pair{}, asset.Empty, err
+			return currency.EMPTYPAIR, asset.Empty, err
 		}
 
 		enabled, err := b.GetEnabledPairs(assetTypes[i])
 		if err != nil {
-			return currency.Pair{}, asset.Empty, err
+			return currency.EMPTYPAIR, asset.Empty, err
 		}
 		for j := range enabled {
 			if pFmt.Format(enabled[j]) == symbol {
@@ -201,7 +249,7 @@ func (b *Base) GetPairAndAssetTypeRequestFormatted(symbol string) (currency.Pair
 			}
 		}
 	}
-	return currency.Pair{}, asset.Empty, errSymbolCannotBeMatched
+	return currency.EMPTYPAIR, asset.Empty, ErrSymbolCannotBeMatched
 }
 
 // GetClientBankAccounts returns banking details associated with
@@ -342,43 +390,9 @@ func (b *Base) GetSupportedFeatures() FeaturesSupported {
 	return b.Features.Supports
 }
 
-// GetPairFormat returns the pair format based on the exchange and
-// asset type
-func (b *Base) GetPairFormat(assetType asset.Item, requestFormat bool) (currency.PairFormat, error) {
-	if b.CurrencyPairs.UseGlobalFormat {
-		if requestFormat {
-			if b.CurrencyPairs.RequestFormat == nil {
-				return currency.EMPTYFORMAT,
-					errors.New("global request format is nil")
-			}
-			return *b.CurrencyPairs.RequestFormat, nil
-		}
-
-		if b.CurrencyPairs.ConfigFormat == nil {
-			return currency.EMPTYFORMAT,
-				errors.New("global config format is nil")
-		}
-		return *b.CurrencyPairs.ConfigFormat, nil
-	}
-
-	ps, err := b.CurrencyPairs.Get(assetType)
-	if err != nil {
-		return currency.EMPTYFORMAT, err
-	}
-
-	if requestFormat {
-		if ps.RequestFormat == nil {
-			return currency.EMPTYFORMAT,
-				errors.New("asset type request format is nil")
-		}
-		return *ps.RequestFormat, nil
-	}
-
-	if ps.ConfigFormat == nil {
-		return currency.EMPTYFORMAT,
-			errors.New("asset type config format is nil")
-	}
-	return *ps.ConfigFormat, nil
+// GetPairFormat returns the pair format based on the exchange and asset type
+func (b *Base) GetPairFormat(a asset.Item, r bool) (currency.PairFormat, error) {
+	return b.CurrencyPairs.GetFormat(a, r)
 }
 
 // GetEnabledPairs is a method that returns the enabled currency pairs of
@@ -387,7 +401,7 @@ func (b *Base) GetPairFormat(assetType asset.Item, requestFormat bool) (currency
 func (b *Base) GetEnabledPairs(a asset.Item) (currency.Pairs, error) {
 	err := b.CurrencyPairs.IsAssetEnabled(a)
 	if err != nil {
-		return nil, nil //nolint:nilerr // non-fatal error
+		return nil, err
 	}
 	format, err := b.GetPairFormat(a, false)
 	if err != nil {
@@ -455,7 +469,7 @@ func (b *Base) SupportsPair(p currency.Pair, enabledPairs bool, assetType asset.
 	if pairs.Contains(p, false) {
 		return nil
 	}
-	return errors.New("pair not supported")
+	return fmt.Errorf("%w %v", currency.ErrCurrencyNotSupported, p)
 }
 
 // FormatExchangeCurrencies returns a string containing
@@ -488,6 +502,9 @@ func (b *Base) FormatExchangeCurrencies(pairs []currency.Pair, assetType asset.I
 // FormatExchangeCurrency is a method that formats and returns a currency pair
 // based on the user currency display preferences
 func (b *Base) FormatExchangeCurrency(p currency.Pair, assetType asset.Item) (currency.Pair, error) {
+	if p.IsEmpty() {
+		return currency.EMPTYPAIR, currency.ErrCurrencyPairEmpty
+	}
 	pairFmt, err := b.GetPairFormat(assetType, true)
 	if err != nil {
 		return currency.EMPTYPAIR, err
@@ -497,12 +514,19 @@ func (b *Base) FormatExchangeCurrency(p currency.Pair, assetType asset.Item) (cu
 
 // SetEnabled is a method that sets if the exchange is enabled
 func (b *Base) SetEnabled(enabled bool) {
+	b.settingsMutex.Lock()
 	b.Enabled = enabled
+	b.settingsMutex.Unlock()
 }
 
 // IsEnabled is a method that returns if the current exchange is enabled
 func (b *Base) IsEnabled() bool {
-	return b != nil && b.Enabled
+	if b == nil {
+		return false
+	}
+	b.settingsMutex.RLock()
+	defer b.settingsMutex.RUnlock()
+	return b.Enabled
 }
 
 // SetupDefaults sets the exchange settings based on the supplied config
@@ -519,9 +543,6 @@ func (b *Base) SetupDefaults(exch *config.Exchange) error {
 
 	b.API.AuthenticatedSupport = exch.API.AuthenticatedSupport
 	b.API.AuthenticatedWebsocketSupport = exch.API.AuthenticatedWebsocketSupport
-	if b.API.credentials == nil {
-		b.API.credentials = &account.Credentials{}
-	}
 	b.API.credentials.SubAccount = exch.API.Credentials.Subaccount
 	if b.API.AuthenticatedSupport || b.API.AuthenticatedWebsocketSupport {
 		b.SetCredentials(exch.API.Credentials.Key,
@@ -543,7 +564,14 @@ func (b *Base) SetupDefaults(exch *config.Exchange) error {
 	}
 
 	if exch.CurrencyPairs == nil {
-		exch.CurrencyPairs = new(currency.PairsManager)
+		exch.CurrencyPairs = &b.CurrencyPairs
+		a := exch.CurrencyPairs.GetAssetTypes(false)
+		for i := range a {
+			err = exch.CurrencyPairs.SetAssetEnabled(a[i], true)
+			if err != nil && !errors.Is(err, currency.ErrAssetAlreadyEnabled) {
+				return err
+			}
+		}
 	}
 
 	b.HTTPDebugging = exch.HTTPDebugging
@@ -603,16 +631,31 @@ func (b *Base) SetPairs(pairs currency.Pairs, assetType asset.Item, enabled bool
 	if err != nil {
 		return err
 	}
-
+	cPairs := make(currency.Pairs, len(pairs))
+	copy(cPairs, pairs)
 	for x := range pairs {
-		pairs[x] = pairs[x].Format(pairFmt)
+		cPairs[x] = pairs[x].Format(pairFmt)
 	}
 
-	err = b.CurrencyPairs.StorePairs(assetType, pairs, enabled)
+	err = b.CurrencyPairs.StorePairs(assetType, cPairs, enabled)
 	if err != nil {
 		return err
 	}
-	return b.Config.CurrencyPairs.StorePairs(assetType, pairs, enabled)
+	return b.Config.CurrencyPairs.StorePairs(assetType, cPairs, enabled)
+}
+
+// EnsureOnePairEnabled not all assets have pairs, eg options
+// search for an asset that does and enable one if none are enabled
+// error if no currency pairs found for an entire exchange
+func (b *Base) EnsureOnePairEnabled() error {
+	pair, item, err := b.CurrencyPairs.EnsureOnePairEnabled()
+	if err != nil {
+		return err
+	}
+	if !pair.IsEmpty() {
+		log.Warnf(log.ExchangeSys, "%v had no enabled pairs, %v %v pair has been enabled", b.Name, item, pair)
+	}
+	return nil
 }
 
 // UpdatePairs updates the exchange currency pairs for either enabledPairs or
@@ -729,17 +772,14 @@ func (b *Base) UpdatePairs(incoming currency.Pairs, a asset.Item, enabled, force
 			if err != nil {
 				continue
 			}
-			diff.Remove, err = diff.Remove.Remove(enabledPairs[x])
-			if err != nil {
-				return err
-			}
+			diff.Remove = diff.Remove.Remove(enabledPairs[x])
 			enabledPairs[target] = match.Format(pFmt)
 		}
 		target++
 	}
 
 	enabledPairs = enabledPairs[:target]
-	if len(enabledPairs) == 0 {
+	if len(enabledPairs) == 0 && len(incoming) > 0 {
 		// NOTE: If enabled pairs are not populated for any reason.
 		var randomPair currency.Pair
 		randomPair, err = incoming.GetRandomPair()
@@ -873,7 +913,7 @@ func (b *Base) SupportsWithdrawPermissions(permissions uint32) bool {
 // FormatWithdrawPermissions will return each of the exchange's compatible withdrawal methods in readable form
 func (b *Base) FormatWithdrawPermissions() string {
 	var services []string
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		var check uint32 = 1 << uint32(i)
 		if b.GetWithdrawPermissions()&check != 0 {
 			switch check {
@@ -927,18 +967,15 @@ func (b *Base) FormatWithdrawPermissions() string {
 	return NoAPIWithdrawalMethodsText
 }
 
-// SupportsAsset whether or not the supplied asset is supported
-// by the exchange
+// SupportsAsset whether or not the supplied asset is supported by the exchange
 func (b *Base) SupportsAsset(a asset.Item) bool {
-	_, ok := b.CurrencyPairs.Pairs[a]
-	return ok
+	return b.CurrencyPairs.IsAssetSupported(a)
 }
 
 // PrintEnabledPairs prints the exchanges enabled asset pairs
 func (b *Base) PrintEnabledPairs() {
 	for k, v := range b.CurrencyPairs.Pairs {
-		log.Infof(log.ExchangeSys, "%s Asset type %v:\n\t Enabled pairs: %v",
-			b.Name, strings.ToUpper(k.String()), v.Enabled)
+		log.Infof(log.ExchangeSys, "%s Asset type %v:\n\t Enabled pairs: %v", b.Name, strings.ToUpper(k.String()), v.Enabled)
 	}
 }
 
@@ -949,10 +986,7 @@ func (b *Base) GetBase() *Base { return b }
 // for validation of API credentials
 func (b *Base) CheckTransientError(err error) error {
 	if _, ok := err.(net.Error); ok {
-		log.Warnf(log.ExchangeSys,
-			"%s net error captured, will not disable authentication %s",
-			b.Name,
-			err)
+		log.Warnf(log.ExchangeSys, "%s net error captured, will not disable authentication %s", b.Name, err)
 		return nil
 	}
 	return err
@@ -1002,12 +1036,10 @@ func (b *Base) StoreAssetPairFormat(a asset.Item, f currency.PairStore) error {
 	return nil
 }
 
-// SetGlobalPairsManager sets defined asset and pairs management system with
-// with global formatting
+// SetGlobalPairsManager sets defined asset and pairs management system with global formatting
 func (b *Base) SetGlobalPairsManager(request, config *currency.PairFormat, assets ...asset.Item) error {
 	if request == nil {
-		return fmt.Errorf("%s cannot set pairs manager, request pair format not provided",
-			b.Name)
+		return fmt.Errorf("%s cannot set pairs manager, request pair format not provided", b.Name)
 	}
 
 	if config == nil {
@@ -1039,10 +1071,10 @@ func (b *Base) SetGlobalPairsManager(request, config *currency.PairFormat, asset
 	for i := range assets {
 		if assets[i].String() == "" {
 			b.CurrencyPairs.Pairs = nil
-			return fmt.Errorf("%s cannot set pairs manager, asset is empty string",
-				b.Name)
+			return fmt.Errorf("%s cannot set pairs manager, asset is empty string", b.Name)
 		}
 		b.CurrencyPairs.Pairs[assets[i]] = new(currency.PairStore)
+		b.CurrencyPairs.Pairs[assets[i]].AssetEnabled = convert.BoolPtr(true)
 		b.CurrencyPairs.Pairs[assets[i]].ConfigFormat = config
 		b.CurrencyPairs.Pairs[assets[i]].RequestFormat = request
 	}
@@ -1084,28 +1116,33 @@ func (b *Base) FlushWebsocketChannels() error {
 
 // SubscribeToWebsocketChannels appends to ChannelsToSubscribe
 // which lets websocket.manageSubscriptions handle subscribing
-func (b *Base) SubscribeToWebsocketChannels(channels []stream.ChannelSubscription) error {
+func (b *Base) SubscribeToWebsocketChannels(channels subscription.List) error {
 	if b.Websocket == nil {
 		return common.ErrFunctionNotSupported
 	}
-	return b.Websocket.SubscribeToChannels(channels)
+	return b.Websocket.SubscribeToChannels(b.Websocket.Conn, channels)
 }
 
 // UnsubscribeToWebsocketChannels removes from ChannelsToSubscribe
 // which lets websocket.manageSubscriptions handle unsubscribing
-func (b *Base) UnsubscribeToWebsocketChannels(channels []stream.ChannelSubscription) error {
+func (b *Base) UnsubscribeToWebsocketChannels(channels subscription.List) error {
 	if b.Websocket == nil {
 		return common.ErrFunctionNotSupported
 	}
-	return b.Websocket.UnsubscribeChannels(channels)
+	return b.Websocket.UnsubscribeChannels(b.Websocket.Conn, channels)
 }
 
 // GetSubscriptions returns a copied list of subscriptions
-func (b *Base) GetSubscriptions() ([]stream.ChannelSubscription, error) {
+func (b *Base) GetSubscriptions() (subscription.List, error) {
 	if b.Websocket == nil {
 		return nil, common.ErrFunctionNotSupported
 	}
 	return b.Websocket.GetSubscriptions(), nil
+}
+
+// GetSubscriptionTemplate returns a template for a given subscription; See exchange/subscription/README.md for more information
+func (b *Base) GetSubscriptionTemplate(*subscription.Subscription) (*template.Template, error) {
+	return nil, common.ErrFunctionNotSupported
 }
 
 // AuthenticateWebsocket sends an authentication message to the websocket
@@ -1113,9 +1150,16 @@ func (b *Base) AuthenticateWebsocket(_ context.Context) error {
 	return common.ErrFunctionNotSupported
 }
 
+// CanUseAuthenticatedWebsocketEndpoints calls b.Websocket.CanUseAuthenticatedEndpoints
+// Used to avoid import cycles on stream.websocket
+func (b *Base) CanUseAuthenticatedWebsocketEndpoints() bool {
+	return b.Websocket != nil && b.Websocket.CanUseAuthenticatedEndpoints()
+}
+
 // KlineIntervalEnabled returns if requested interval is enabled on exchange
 func (b *Base) klineIntervalEnabled(in kline.Interval) bool {
-	return b.Features.Enabled.Kline.Intervals[in.Word()]
+	// TODO: Add in the ability to use custom klines
+	return b.Features.Enabled.Kline.Intervals.ExchangeSupported(in)
 }
 
 // FormatExchangeKlineInterval returns Interval to string
@@ -1127,22 +1171,18 @@ func (b *Base) FormatExchangeKlineInterval(in kline.Interval) string {
 // ValidateKline confirms that the requested pair, asset & interval are
 // supported and/or enabled by the requested exchange.
 func (b *Base) ValidateKline(pair currency.Pair, a asset.Item, interval kline.Interval) error {
-	var errorList []string
+	var err error
 	if b.CurrencyPairs.IsAssetEnabled(a) != nil {
-		errorList = append(errorList, fmt.Sprintf("[%s] asset not enabled", a))
+		err = common.AppendError(err, fmt.Errorf("%w %v", asset.ErrNotEnabled, a))
 	} else if !b.CurrencyPairs.Pairs[a].Enabled.Contains(pair, true) {
-		errorList = append(errorList, fmt.Sprintf("[%s] pair not enabled", pair))
+		err = common.AppendError(err, fmt.Errorf("%w in enabled pairs %v", currency.ErrPairNotFound, pair))
 	}
 
 	if !b.klineIntervalEnabled(interval) {
-		errorList = append(errorList, fmt.Sprintf("[%s] interval not supported", interval))
+		err = common.AppendError(err, fmt.Errorf("%w %v", kline.ErrInvalidInterval, interval))
 	}
 
-	if len(errorList) > 0 {
-		return fmt.Errorf("%w: %v", kline.ErrValidatingParams, strings.Join(errorList, ", "))
-	}
-
-	return nil
+	return err
 }
 
 // AddTradesToBuffer is a helper function that will only
@@ -1251,7 +1291,7 @@ func (e *Endpoints) SetRunning(key, val string) error {
 			key,
 			val,
 			e.Exchange)
-		return nil //nolint:nilerr // non-fatal error as we won't update the running URL
+		return nil
 	}
 	e.defaults[key] = val
 	return nil
@@ -1288,6 +1328,57 @@ func (e *Endpoints) GetURLMap() map[string]string {
 	return urlMap
 }
 
+// GetCachedOpenInterest returns open interest data if the exchange
+// supports open interest in ticker data
+func (b *Base) GetCachedOpenInterest(_ context.Context, k ...key.PairAsset) ([]futures.OpenInterest, error) {
+	if !b.Features.Supports.FuturesCapabilities.OpenInterest.Supported ||
+		!b.Features.Supports.FuturesCapabilities.OpenInterest.SupportedViaTicker {
+		return nil, common.ErrFunctionNotSupported
+	}
+	if len(k) == 0 {
+		ticks, err := ticker.GetExchangeTickers(b.Name)
+		if err != nil {
+			return nil, err
+		}
+		resp := make([]futures.OpenInterest, 0, len(ticks))
+		for i := range ticks {
+			if ticks[i].OpenInterest <= 0 {
+				continue
+			}
+			resp = append(resp, futures.OpenInterest{
+				Key: key.ExchangePairAsset{
+					Exchange: b.Name,
+					Base:     ticks[i].Pair.Base.Item,
+					Quote:    ticks[i].Pair.Quote.Item,
+					Asset:    ticks[i].AssetType,
+				},
+				OpenInterest: ticks[i].OpenInterest,
+			})
+		}
+		sort.Slice(resp, func(i, j int) bool {
+			return resp[i].Key.Base.Symbol < resp[j].Key.Base.Symbol
+		})
+		return resp, nil
+	}
+	resp := make([]futures.OpenInterest, len(k))
+	for i := range k {
+		t, err := ticker.GetTicker(b.Name, k[i].Pair(), k[i].Asset)
+		if err != nil {
+			return nil, err
+		}
+		resp[i] = futures.OpenInterest{
+			Key: key.ExchangePairAsset{
+				Exchange: b.Name,
+				Base:     t.Pair.Base.Item,
+				Quote:    t.Pair.Quote.Item,
+				Asset:    t.AssetType,
+			},
+			OpenInterest: t.OpenInterest,
+		}
+	}
+	return resp, nil
+}
+
 // FormatSymbol formats the given pair to a string suitable for exchange API requests
 func (b *Base) FormatSymbol(pair currency.Pair, assetType asset.Item) (string, error) {
 	pairFmt, err := b.GetPairFormat(assetType, true)
@@ -1309,6 +1400,8 @@ func (u URL) String() string {
 		return restCoinMarginedFuturesURL
 	case RestFutures:
 		return restFuturesURL
+	case RestFuturesSupplementary:
+		return restFuturesSupplementaryURL
 	case RestUSDCMargined:
 		return restUSDCMarginedFuturesURL
 	case RestSandbox:
@@ -1345,6 +1438,8 @@ func getURLTypeFromString(ep string) (URL, error) {
 		return RestCoinMargined, nil
 	case restFuturesURL:
 		return RestFutures, nil
+	case restFuturesSupplementaryURL:
+		return RestFuturesSupplementary, nil
 	case restUSDCMarginedFuturesURL:
 		return RestUSDCMargined, nil
 	case restSandboxURL:
@@ -1364,13 +1459,8 @@ func getURLTypeFromString(ep string) (URL, error) {
 	case edgeCase3URL:
 		return EdgeCase3, nil
 	default:
-		return Invalid, fmt.Errorf("%w for %s", errEndpointStringNotFound, ep)
+		return Invalid, fmt.Errorf("%w '%s'", errEndpointStringNotFound, ep)
 	}
-}
-
-// UpdateOrderExecutionLimits updates order execution limits this is overridable
-func (b *Base) UpdateOrderExecutionLimits(_ context.Context, _ asset.Item) error {
-	return common.ErrNotYetImplemented
 }
 
 // DisableAssetWebsocketSupport disables websocket functionality for the
@@ -1401,7 +1491,7 @@ func (a *AssetWebsocketSupport) IsAssetWebsocketSupported(aType asset.Item) bool
 }
 
 // UpdateCurrencyStates updates currency states
-func (b *Base) UpdateCurrencyStates(ctx context.Context, a asset.Item) error {
+func (b *Base) UpdateCurrencyStates(_ context.Context, _ asset.Item) error {
 	return common.ErrNotYetImplemented
 }
 
@@ -1411,48 +1501,206 @@ func (b *Base) GetAvailableTransferChains(_ context.Context, _ currency.Code) ([
 	return nil, common.ErrFunctionNotSupported
 }
 
-// CalculatePNL is an overridable function to allow PNL to be calculated on an
-// open position
-// It will also determine whether the position is considered to be liquidated
-// For live trading, an overriding function may wish to confirm the liquidation by
-// requesting the status of the asset
-func (b *Base) CalculatePNL(context.Context, *order.PNLCalculatorRequest) (*order.PNLResult, error) {
-	return nil, common.ErrNotYetImplemented
-}
-
-// ScaleCollateral is an overridable function to determine how much
-// collateral is usable in futures positions
-func (b *Base) ScaleCollateral(context.Context, *order.CollateralCalculator) (*order.CollateralByCurrency, error) {
-	return nil, common.ErrNotYetImplemented
-}
-
-// CalculateTotalCollateral takes in n collateral calculators to determine an overall
-// standing in a singular currency. See FTX's implementation
-func (b *Base) CalculateTotalCollateral(ctx context.Context, calculator *order.TotalCollateralCalculator) (*order.TotalCollateralResponse, error) {
-	return nil, common.ErrNotYetImplemented
-}
-
-// GetCollateralCurrencyForContract returns the collateral currency for an asset and contract pair
-func (b *Base) GetCollateralCurrencyForContract(asset.Item, currency.Pair) (currency.Code, asset.Item, error) {
-	return currency.Code{}, asset.Empty, common.ErrNotYetImplemented
-}
-
-// GetCurrencyForRealisedPNL returns where to put realised PNL
-// example 1: FTX PNL is paid out in USD to your spot wallet
-// example 2: Binance coin margined futures pays returns using the same currency eg BTC
-func (b *Base) GetCurrencyForRealisedPNL(_ asset.Item, _ currency.Pair) (currency.Code, asset.Item, error) {
-	return currency.Code{}, asset.Empty, common.ErrNotYetImplemented
-}
-
 // HasAssetTypeAccountSegregation returns if the accounts are divided into asset
 // types instead of just being denoted as spot holdings.
 func (b *Base) HasAssetTypeAccountSegregation() bool {
 	return b.Features.Supports.RESTCapabilities.HasAssetTypeAccountSegregation
 }
 
-// GetServerTime returns the current exchange server time.
-func (b *Base) GetServerTime(context.Context, asset.Item) (time.Time, error) {
-	return time.Time{}, common.ErrNotYetImplemented
+// GetPositionSummary returns stats for a future position
+func (b *Base) GetPositionSummary(context.Context, *futures.PositionSummaryRequest) (*futures.PositionSummary, error) {
+	return nil, common.ErrNotYetImplemented
+}
+
+// GetKlineRequest returns a helper for the fetching of candle/kline data for
+// a single request within a pre-determined time window.
+func (b *Base) GetKlineRequest(pair currency.Pair, a asset.Item, interval kline.Interval, start, end time.Time, fixedAPICandleLength bool) (*kline.Request, error) {
+	if pair.IsEmpty() {
+		return nil, currency.ErrCurrencyPairEmpty
+	}
+	if !a.IsValid() {
+		return nil, asset.ErrNotSupported
+	}
+	// NOTE: This allows for checking that the required kline interval is
+	// supported by the exchange and/or can be constructed from lower time frame
+	// intervals.
+	exchangeInterval, err := b.Features.Enabled.Kline.Intervals.Construct(interval)
+	if err != nil {
+		return nil, err
+	}
+
+	err = b.ValidateKline(pair, a, exchangeInterval)
+	if err != nil {
+		return nil, err
+	}
+
+	formatted, err := b.FormatExchangeCurrency(pair, a)
+	if err != nil {
+		return nil, err
+	}
+
+	limit, err := b.Features.Enabled.Kline.GetIntervalResultLimit(exchangeInterval)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := kline.CreateKlineRequest(b.Name, pair, formatted, a, interval, exchangeInterval, start, end, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	// NOTE: The checks below makes sure a client is notified that using this
+	// functionality will result in error if the total candles cannot be
+	// theoretically retrieved.
+	if fixedAPICandleLength {
+		origCount := kline.TotalCandlesPerInterval(req.Start, req.End, interval)
+		modifiedCount := kline.TotalCandlesPerInterval(req.Start, time.Now(), exchangeInterval)
+		if modifiedCount > limit {
+			errMsg := fmt.Sprintf("for %v %v candles between %v-%v. ",
+				origCount,
+				interval,
+				start.Format(common.SimpleTimeFormatWithTimezone),
+				end.Format(common.SimpleTimeFormatWithTimezone))
+			if interval != exchangeInterval {
+				errMsg += fmt.Sprintf("Request converts to %v %v candles. ",
+					modifiedCount,
+					exchangeInterval)
+			}
+			boundary := time.Now().Add(-exchangeInterval.Duration() * time.Duration(limit))
+			return nil, fmt.Errorf("%w %v, exceeding the limit of %v %v candles up to %v. Please reduce timeframe or use GetHistoricCandlesExtended",
+				kline.ErrRequestExceedsExchangeLimits,
+				errMsg,
+				limit,
+				exchangeInterval,
+				boundary.Format(common.SimpleTimeFormatWithTimezone))
+		}
+	} else if count := kline.TotalCandlesPerInterval(req.Start, req.End, exchangeInterval); count > limit {
+		return nil, fmt.Errorf("candle count exceeded: %d. The endpoint has a set candle limit return of %d candles. Candle data will be incomplete: %w",
+			count,
+			limit,
+			kline.ErrRequestExceedsExchangeLimits)
+	}
+
+	return req, nil
+}
+
+// GetKlineExtendedRequest returns a helper for the fetching of candle/kline
+// data for a *multi* request within a pre-determined time window. This has
+// extended functionality to also break down calls to fetch total history.
+func (b *Base) GetKlineExtendedRequest(pair currency.Pair, a asset.Item, interval kline.Interval, start, end time.Time) (*kline.ExtendedRequest, error) {
+	if pair.IsEmpty() {
+		return nil, currency.ErrCurrencyPairEmpty
+	}
+	if !a.IsValid() {
+		return nil, asset.ErrNotSupported
+	}
+
+	exchangeInterval, err := b.Features.Enabled.Kline.Intervals.Construct(interval)
+	if err != nil {
+		return nil, err
+	}
+
+	err = b.ValidateKline(pair, a, exchangeInterval)
+	if err != nil {
+		return nil, err
+	}
+
+	formatted, err := b.FormatExchangeCurrency(pair, a)
+	if err != nil {
+		return nil, err
+	}
+
+	limit, err := b.Features.Enabled.Kline.GetIntervalResultLimit(exchangeInterval)
+	if err != nil {
+		return nil, err
+	}
+
+	r, err := kline.CreateKlineRequest(b.Name, pair, formatted, a, interval, exchangeInterval, start, end, limit)
+	if err != nil {
+		return nil, err
+	}
+	r.IsExtended = true
+
+	dates, err := r.GetRanges(uint32(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	return &kline.ExtendedRequest{Request: r, RangeHolder: dates}, nil
+}
+
+// Shutdown closes active websocket connections if available and then cleans up
+// a REST requester instance.
+func (b *Base) Shutdown() error {
+	if b.Websocket != nil {
+		err := b.Websocket.Shutdown()
+		if err != nil && !errors.Is(err, stream.ErrNotConnected) {
+			return err
+		}
+	}
+	return b.Requester.Shutdown()
+}
+
+// GetStandardConfig returns a standard default exchange config. Set defaults
+// must populate base struct with exchange specific defaults before calling
+// this function.
+func (b *Base) GetStandardConfig() (*config.Exchange, error) {
+	if b == nil {
+		return nil, errExchangeIsNil
+	}
+
+	if b.Name == "" {
+		return nil, errSetDefaultsNotCalled
+	}
+
+	exchCfg := new(config.Exchange)
+	exchCfg.Name = b.Name
+	exchCfg.Enabled = b.Enabled
+	exchCfg.HTTPTimeout = DefaultHTTPTimeout
+	exchCfg.BaseCurrencies = b.BaseCurrencies
+
+	if b.SupportsWebsocket() {
+		exchCfg.WebsocketResponseCheckTimeout = config.DefaultWebsocketResponseCheckTimeout
+		exchCfg.WebsocketResponseMaxLimit = config.DefaultWebsocketResponseMaxLimit
+		exchCfg.WebsocketTrafficTimeout = config.DefaultWebsocketTrafficTimeout
+	}
+
+	return exchCfg, nil
+}
+
+// Futures section
+
+// CalculatePNL is an overridable function to allow PNL to be calculated on an
+// open position
+// It will also determine whether the position is considered to be liquidated
+// For live trading, an overriding function may wish to confirm the liquidation by
+// requesting the status of the asset
+func (b *Base) CalculatePNL(context.Context, *futures.PNLCalculatorRequest) (*futures.PNLResult, error) {
+	return nil, common.ErrNotYetImplemented
+}
+
+// ScaleCollateral is an overridable function to determine how much
+// collateral is usable in futures positions
+func (b *Base) ScaleCollateral(context.Context, *futures.CollateralCalculator) (*collateral.ByCurrency, error) {
+	return nil, common.ErrNotYetImplemented
+}
+
+// CalculateTotalCollateral takes in n collateral calculators to determine an overall
+// standing in a singular currency
+func (b *Base) CalculateTotalCollateral(_ context.Context, _ *futures.TotalCollateralCalculator) (*futures.TotalCollateralResponse, error) {
+	return nil, common.ErrNotYetImplemented
+}
+
+// GetCollateralCurrencyForContract returns the collateral currency for an asset and contract pair
+func (b *Base) GetCollateralCurrencyForContract(_ asset.Item, _ currency.Pair) (currency.Code, asset.Item, error) {
+	return currency.Code{}, asset.Empty, common.ErrNotYetImplemented
+}
+
+// GetCurrencyForRealisedPNL returns where to put realised PNL
+// example 1: Bybit universal margin PNL is paid out in USD to your spot wallet
+// example 2: Binance coin margined futures pays returns using the same currency eg BTC
+func (b *Base) GetCurrencyForRealisedPNL(_ asset.Item, _ currency.Pair) (currency.Code, asset.Item, error) {
+	return currency.Code{}, asset.Empty, common.ErrNotYetImplemented
 }
 
 // GetMarginRatesHistory returns the margin rate history for the supplied currency
@@ -1460,23 +1708,23 @@ func (b *Base) GetMarginRatesHistory(context.Context, *margin.RateHistoryRequest
 	return nil, common.ErrNotYetImplemented
 }
 
-// GetPositionSummary returns stats for a future position
-func (b *Base) GetPositionSummary(context.Context, *order.PositionSummaryRequest) (*order.PositionSummary, error) {
-	return nil, common.ErrNotYetImplemented
-}
-
-// GetFundingPaymentDetails returns funding payment details for a future for a specific time period
-func (b *Base) GetFundingPaymentDetails(context.Context, *order.FundingRatesRequest) (*order.FundingRates, error) {
+// GetFuturesPositionSummary returns stats for a future position
+func (b *Base) GetFuturesPositionSummary(context.Context, *futures.PositionSummaryRequest) (*futures.PositionSummary, error) {
 	return nil, common.ErrNotYetImplemented
 }
 
 // GetFuturesPositions returns futures positions for all currencies
-func (b *Base) GetFuturesPositions(context.Context, *order.PositionsRequest) ([]order.PositionDetails, error) {
+func (b *Base) GetFuturesPositions(context.Context, *futures.PositionsRequest) ([]futures.PositionDetails, error) {
 	return nil, common.ErrNotYetImplemented
 }
 
-// GetFundingRates returns funding rates based on request data
-func (b *Base) GetFundingRates(ctx context.Context, request *order.FundingRatesRequest) ([]order.FundingRates, error) {
+// GetFuturesPositionOrders returns futures positions orders
+func (b *Base) GetFuturesPositionOrders(context.Context, *futures.PositionsRequest) ([]futures.PositionResponse, error) {
+	return nil, common.ErrNotYetImplemented
+}
+
+// GetHistoricalFundingRates returns historical funding rates for a future
+func (b *Base) GetHistoricalFundingRates(context.Context, *fundingrate.HistoricalRatesRequest) (*fundingrate.HistoricalRates, error) {
 	return nil, common.ErrNotYetImplemented
 }
 
@@ -1484,4 +1732,214 @@ func (b *Base) GetFundingRates(ctx context.Context, request *order.FundingRatesR
 // differs by exchange
 func (b *Base) IsPerpetualFutureCurrency(asset.Item, currency.Pair) (bool, error) {
 	return false, common.ErrNotYetImplemented
+}
+
+// SetCollateralMode sets the account's collateral mode for the asset type
+func (b *Base) SetCollateralMode(_ context.Context, _ asset.Item, _ collateral.Mode) error {
+	return common.ErrNotYetImplemented
+}
+
+// GetCollateralMode returns the account's collateral mode for the asset type
+func (b *Base) GetCollateralMode(_ context.Context, _ asset.Item) (collateral.Mode, error) {
+	return 0, common.ErrNotYetImplemented
+}
+
+// SetMarginType sets the account's margin type for the asset type
+func (b *Base) SetMarginType(_ context.Context, _ asset.Item, _ currency.Pair, _ margin.Type) error {
+	return common.ErrNotYetImplemented
+}
+
+// ChangePositionMargin changes the margin type for a position
+func (b *Base) ChangePositionMargin(_ context.Context, _ *margin.PositionChangeRequest) (*margin.PositionChangeResponse, error) {
+	return nil, common.ErrNotYetImplemented
+}
+
+// SetLeverage sets the account's initial leverage for the asset type and pair
+func (b *Base) SetLeverage(_ context.Context, _ asset.Item, _ currency.Pair, _ margin.Type, _ float64, _ order.Side) error {
+	return common.ErrNotYetImplemented
+}
+
+// GetLeverage gets the account's initial leverage for the asset type and pair
+func (b *Base) GetLeverage(_ context.Context, _ asset.Item, _ currency.Pair, _ margin.Type, _ order.Side) (float64, error) {
+	return -1, common.ErrNotYetImplemented
+}
+
+// MatchSymbolWithAvailablePairs returns a currency pair based on the supplied
+// symbol and asset type. If the string is expected to have a delimiter this
+// will attempt to screen it out.
+func (b *Base) MatchSymbolWithAvailablePairs(symbol string, a asset.Item, hasDelimiter bool) (currency.Pair, error) {
+	if hasDelimiter {
+		for x := range symbol {
+			if unicode.IsPunct(rune(symbol[x])) {
+				symbol = symbol[:x] + symbol[x+1:]
+				break
+			}
+		}
+	}
+	return b.CurrencyPairs.Match(symbol, a)
+}
+
+// MatchSymbolCheckEnabled returns a currency pair based on the supplied symbol
+// and asset type against the available pairs list. If the string is expected to
+// have a delimiter this will attempt to screen it out. It will also check if
+// the pair is enabled.
+func (b *Base) MatchSymbolCheckEnabled(symbol string, a asset.Item, hasDelimiter bool) (pair currency.Pair, enabled bool, err error) {
+	pair, err = b.MatchSymbolWithAvailablePairs(symbol, a, hasDelimiter)
+	if err != nil {
+		return pair, false, err
+	}
+
+	enabled, err = b.IsPairEnabled(pair, a)
+	return
+}
+
+// IsPairEnabled checks if a pair is enabled for an enabled asset type.
+// TODO: Optimisation map for enabled pair matching, instead of linear traversal.
+func (b *Base) IsPairEnabled(pair currency.Pair, a asset.Item) (bool, error) {
+	return b.CurrencyPairs.IsPairEnabled(pair, a)
+}
+
+// GetOpenInterest returns the open interest rate for a given asset pair
+func (b *Base) GetOpenInterest(context.Context, ...key.PairAsset) ([]futures.OpenInterest, error) {
+	return nil, common.ErrFunctionNotSupported
+}
+
+// ParallelChanOp performs a single method call in parallel across streams and waits to return any errors
+func (b *Base) ParallelChanOp(channels subscription.List, m func(subscription.List) error, batchSize int) error {
+	wg := sync.WaitGroup{}
+	errC := make(chan error, len(channels))
+
+	for _, b := range common.Batch(channels, batchSize) {
+		wg.Add(1)
+		go func(c subscription.List) {
+			defer wg.Done()
+			if err := m(c); err != nil {
+				errC <- err
+			}
+		}(b)
+	}
+
+	wg.Wait()
+	close(errC)
+
+	var errs error
+	for err := range errC {
+		errs = common.AppendError(errs, err)
+	}
+
+	return errs
+}
+
+// Bootstrap function allows for exchange authors to supplement or override common startup actions
+// If exchange.Bootstrap returns false or error it will not perform any other actions.
+// If it returns true, or is not implemented by the exchange, it will:
+// * Print debug startup information
+// * UpdateOrderExecutionLimits
+// * UpdateTradablePairs
+func Bootstrap(ctx context.Context, b IBotExchange) error {
+	if continueBootstrap, err := b.Bootstrap(ctx); !continueBootstrap || err != nil {
+		return err
+	}
+
+	if b.IsVerbose() {
+		if b.GetSupportedFeatures().Websocket {
+			wsURL := ""
+			wsEnabled := false
+			if w, err := b.GetWebsocket(); err == nil {
+				wsURL = w.GetWebsocketURL()
+				wsEnabled = w.IsEnabled()
+			}
+			log.Debugf(log.ExchangeSys, "%s Websocket: %s. (url: %s)", b.GetName(), common.IsEnabled(wsEnabled), wsURL)
+		} else {
+			log.Debugf(log.ExchangeSys, "%s Websocket: Unsupported", b.GetName())
+		}
+		b.PrintEnabledPairs()
+	}
+
+	if b.GetEnabledFeatures().AutoPairUpdates {
+		if err := b.UpdateTradablePairs(ctx, false); err != nil {
+			return fmt.Errorf("failed to update tradable pairs: %w", err)
+		}
+	}
+
+	a := b.GetAssetTypes(true)
+	var wg sync.WaitGroup
+	errC := make(chan error, len(a))
+	for i := range a {
+		wg.Add(1)
+		go func(a asset.Item) {
+			defer wg.Done()
+			if err := b.UpdateOrderExecutionLimits(ctx, a); err != nil && !errors.Is(err, common.ErrNotYetImplemented) {
+				errC <- fmt.Errorf("failed to set exchange order execution limits: %w", err)
+			}
+		}(a[i])
+	}
+	wg.Wait()
+	close(errC)
+
+	var err error
+	for e := range errC {
+		err = common.AppendError(err, e)
+	}
+
+	return err
+}
+
+// Bootstrap is a fallback method for exchange startup actions
+// Exchange authors should override this if they wish to customise startup actions
+// Return true or an error to all default Bootstrap actions to occur afterwards
+// or false to signal that no further bootstrapping should occur
+func (b *Base) Bootstrap(_ context.Context) (continueBootstrap bool, err error) {
+	continueBootstrap = true
+	return
+}
+
+// IsVerbose returns if the exchange is set to verbose
+func (b *Base) IsVerbose() bool {
+	return b.Verbose
+}
+
+// GetDefaultConfig returns a default exchange config
+func GetDefaultConfig(ctx context.Context, exch IBotExchange) (*config.Exchange, error) {
+	if exch == nil {
+		return nil, errExchangeIsNil
+	}
+
+	if exch.GetName() == "" {
+		exch.SetDefaults()
+	}
+
+	b := exch.GetBase()
+
+	exchCfg, err := b.GetStandardConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	err = b.SetupDefaults(exchCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	if b.Features.Supports.RESTCapabilities.AutoPairUpdates {
+		err = exch.UpdateTradablePairs(ctx, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return exchCfg, nil
+}
+
+// GetCurrencyTradeURL returns the URL to the exchange's trade page for the given asset and currency pair
+func (b *Base) GetCurrencyTradeURL(context.Context, asset.Item, currency.Pair) (string, error) {
+	return "", common.ErrFunctionNotSupported
+}
+
+// GetTradingRequirements returns the exchange's trading requirements.
+func (b *Base) GetTradingRequirements() protocol.TradingRequirements {
+	if b == nil {
+		return protocol.TradingRequirements{}
+	}
+	return b.Features.TradingRequirements
 }

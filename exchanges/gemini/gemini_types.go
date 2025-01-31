@@ -1,16 +1,8 @@
 package gemini
 
-import "github.com/thrasher-corp/gocryptotrader/currency"
-
-const (
-	marketDataLevel2 = "l2"
-	candles1m        = "candles_1m"
-	candles5m        = "candles_5m"
-	candles15m       = "candles_15m"
-	candles30m       = "candles_30m"
-	candles1hr       = "candles_1h"
-	candles6hr       = "candles_6h"
-	candles1d        = "candles_1d"
+import (
+	"github.com/thrasher-corp/gocryptotrader/currency"
+	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
 // Ticker holds returned ticker data from the exchange
@@ -27,19 +19,34 @@ type Ticker struct {
 	}
 }
 
+// SymbolDetails contains additional symbol details
+type SymbolDetails struct {
+	Symbol                string       `json:"symbol"`
+	BaseCurrency          string       `json:"base_currency"`
+	QuoteCurrency         string       `json:"quote_currency"`
+	TickSize              float64      `json:"tick_size"`
+	QuoteIncrement        float64      `json:"quote_increment"`
+	MinOrderSize          types.Number `json:"min_order_size"`
+	Status                string       `json:"status"`
+	WrapEnabled           bool         `json:"wrap_enabled"`
+	ProductType           string       `json:"product_type"`
+	ContractType          string       `json:"contract_type"`
+	ContractPriceCurrency string       `json:"contract_price_currency"`
+}
+
 // TickerV2 holds returned ticker data from the exchange
 type TickerV2 struct {
-	Ask     float64       `json:"ask,string"`
-	Bid     float64       `json:"bid,string"`
-	Changes []string      `json:"changes"`
-	Close   float64       `json:"close,string"`
-	High    float64       `json:"high,string"`
-	Low     float64       `json:"low,string"`
-	Open    float64       `json:"open,string"`
-	Message string        `json:"message,omitempty"`
-	Reason  string        `json:"reason,omitempty"`
-	Result  string        `json:"result,omitempty"`
-	Symbol  currency.Pair `json:"symbol"`
+	Ask     float64  `json:"ask,string"`
+	Bid     float64  `json:"bid,string"`
+	Changes []string `json:"changes"`
+	Close   float64  `json:"close,string"`
+	High    float64  `json:"high,string"`
+	Low     float64  `json:"low,string"`
+	Open    float64  `json:"open,string"`
+	Message string   `json:"message,omitempty"`
+	Reason  string   `json:"reason,omitempty"`
+	Result  string   `json:"result,omitempty"`
+	Symbol  string   `json:"symbol"`
 }
 
 // Orderbook contains orderbook information for both bid and ask side
@@ -103,6 +110,25 @@ type OrderResult struct {
 		CancelRejects   []string `json:"cancelRejects"`
 	} `json:"details"`
 	Message string `json:"message"`
+}
+
+// TransferResponse contains transfer information
+type TransferResponse struct {
+	Type                  string        `json:"type"`
+	Status                string        `json:"status"`
+	Timestamp             int64         `json:"timestampms"`
+	EventID               int64         `json:"eid"`
+	DepositAdvanceEventID int64         `json:"advanceEid"`
+	Currency              currency.Code `json:"currency"`
+	Amount                float64       `json:"amount,string"`
+	FeeAmount             float64       `json:"feeAmount,string"`
+	FeeCurrency           currency.Code `json:"feeCurrency"`
+	Method                string        `json:"method"`
+	TxHash                string        `json:"txHash"`
+	WithdrawalID          string        `json:"withdrawalId"`
+	OutputIdx             int64         `json:"outputIdx"`
+	Destination           string        `json:"destination"`
+	Purpose               string        `json:"purpose"`
 }
 
 // Order contains order information
@@ -221,14 +247,14 @@ type WithdrawalAddress struct {
 	Reason  string  `json:"reason"`
 }
 
-// ErrorCapture is a generlized error response from the server
+// ErrorCapture is a generalized error response from the server
 type ErrorCapture struct {
 	Result  string `json:"result"`
 	Reason  string `json:"reason"`
 	Message string `json:"message"`
 }
 
-// WsRequestPayload Request info to subscribe to a WS enpoint
+// WsRequestPayload Request info to subscribe to a WS endpoint
 type WsRequestPayload struct {
 	Request string `json:"request"`
 	Nonce   int64  `json:"nonce"`
@@ -299,8 +325,15 @@ type wsSubscriptions struct {
 	Symbols []string `json:"symbols"`
 }
 
+type wsSubOp string
+
+const (
+	wsSubscribeOp   wsSubOp = "subscribe"
+	wsUnsubscribeOp wsSubOp = "unsubscribe"
+)
+
 type wsSubscribeRequest struct {
-	Type          string            `json:"type"`
+	Type          wsSubOp           `json:"type"`
 	Subscriptions []wsSubscriptions `json:"subscriptions"`
 }
 

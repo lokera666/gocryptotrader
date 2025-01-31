@@ -12,15 +12,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/common/crypto"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/nonce"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 )
 
 const (
 	poloniexAPIURL               = "https://poloniex.com"
+	tradeSpot                    = "/trade/"
+	tradeFutures                 = "/futures" + tradeSpot
+	poloniexAltAPIUrl            = "https://api.poloniex.com"
 	poloniexAPITradingEndpoint   = "tradingApi"
 	poloniexAPIVersion           = "1"
 	poloniexBalances             = "returnBalances"
@@ -50,6 +55,9 @@ const (
 	poloniexActiveLoans          = "returnActiveLoans"
 	poloniexLendingHistory       = "returnLendingHistory"
 	poloniexAutoRenew            = "toggleAutoRenew"
+	poloniexCancelByIDs          = "/orders/cancelByIds"
+	poloniexTimestamp            = "/timestamp"
+	poloniexWalletActivity       = "/wallets/activity"
 	poloniexMaxOrderbookDepth    = 100
 )
 
@@ -91,7 +99,7 @@ func (p *Poloniex) GetOrderbook(ctx context.Context, currencyPair string, depth 
 	if currencyPair != "" {
 		vals.Set("currencyPair", currencyPair)
 		resp := OrderbookResponse{}
-		path := fmt.Sprintf("/public?command=returnOrderBook&%s", vals.Encode())
+		path := "/public?command=returnOrderBook&" + vals.Encode()
 		err := p.SendHTTPRequest(ctx, exchange.RestSpot, path, &resp)
 		if err != nil {
 			return oba, err
@@ -110,7 +118,7 @@ func (p *Poloniex) GetOrderbook(ctx context.Context, currencyPair string, depth 
 			}
 			amt, ok := resp.Asks[x][1].(float64)
 			if !ok {
-				return oba, errors.New("unable to type assert amount")
+				return oba, common.GetTypeAssertError("float64", resp.Asks[x][1], "amount")
 			}
 			ob.Asks[x] = OrderbookItem{
 				Price:  price,
@@ -125,7 +133,7 @@ func (p *Poloniex) GetOrderbook(ctx context.Context, currencyPair string, depth 
 			}
 			amt, ok := resp.Bids[x][1].(float64)
 			if !ok {
-				return oba, errors.New("unable to type assert amount")
+				return oba, common.GetTypeAssertError("float64", resp.Bids[x][1], "amount")
 			}
 			ob.Bids[x] = OrderbookItem{
 				Price:  price,
@@ -136,7 +144,7 @@ func (p *Poloniex) GetOrderbook(ctx context.Context, currencyPair string, depth 
 	} else {
 		vals.Set("currencyPair", "all")
 		resp := OrderbookResponseAll{}
-		path := fmt.Sprintf("/public?command=returnOrderBook&%s", vals.Encode())
+		path := "/public?command=returnOrderBook&" + vals.Encode()
 		err := p.SendHTTPRequest(ctx, exchange.RestSpot, path, &resp.Data)
 		if err != nil {
 			return oba, err
@@ -153,7 +161,7 @@ func (p *Poloniex) GetOrderbook(ctx context.Context, currencyPair string, depth 
 				}
 				amt, ok := orderbook.Asks[x][1].(float64)
 				if !ok {
-					return oba, errors.New("unable to type assert amount")
+					return oba, common.GetTypeAssertError("float64", orderbook.Asks[x][1], "amount")
 				}
 				ob.Asks[x] = OrderbookItem{
 					Price:  price,
@@ -167,7 +175,7 @@ func (p *Poloniex) GetOrderbook(ctx context.Context, currencyPair string, depth 
 				}
 				amt, ok := orderbook.Bids[x][1].(float64)
 				if !ok {
-					return oba, errors.New("unable to type assert amount")
+					return oba, common.GetTypeAssertError("float64", orderbook.Bids[x][1], "amount")
 				}
 				ob.Bids[x] = OrderbookItem{
 					Price:  price,
@@ -194,8 +202,7 @@ func (p *Poloniex) GetTradeHistory(ctx context.Context, currencyPair string, sta
 	}
 
 	var resp []TradeHistory
-	path := fmt.Sprintf("/public?command=returnTradeHistory&%s", vals.Encode())
-
+	path := "/public?command=returnTradeHistory&" + vals.Encode()
 	return resp, p.SendHTTPRequest(ctx, exchange.RestSpot, path, &resp)
 }
 
@@ -254,12 +261,25 @@ func (p *Poloniex) GetCurrencies(ctx context.Context) (map[string]*Currencies, e
 	)
 }
 
+// GetTimestamp returns server time
+func (p *Poloniex) GetTimestamp(ctx context.Context) (time.Time, error) {
+	var resp TimeStampResponse
+	err := p.SendHTTPRequest(ctx,
+		exchange.RestSpotSupplementary,
+		poloniexTimestamp,
+		&resp,
+	)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.UnixMilli(resp.ServerTime), nil
+}
+
 // GetLoanOrders returns the list of loan offers and demands for a given
 // currency, specified by the "currency" GET parameter.
 func (p *Poloniex) GetLoanOrders(ctx context.Context, currency string) (LoanOrders, error) {
 	resp := LoanOrders{}
-	path := fmt.Sprintf("/public?command=returnLoanOrders&currency=%s", currency)
-
+	path := "/public?command=returnLoanOrders&currency=" + currency
 	return resp, p.SendHTTPRequest(ctx, exchange.RestSpot, path, &resp)
 }
 
@@ -274,7 +294,7 @@ func (p *Poloniex) GetBalances(ctx context.Context) (Balance, error) {
 
 	data, ok := result.(map[string]interface{})
 	if !ok {
-		return Balance{}, errors.New("unable to type assert balance result")
+		return Balance{}, common.GetTypeAssertError("map[string]interface{}", result, "balance result")
 	}
 	balance := Balance{}
 	balance.Currency = make(map[string]float64)
@@ -318,7 +338,7 @@ func (p *Poloniex) GetDepositAddresses(ctx context.Context) (DepositAddresses, e
 	for x, y := range data {
 		addresses.Addresses[x], ok = y.(string)
 		if !ok {
-			return addresses, errors.New("unable to type assert address to string")
+			return addresses, common.GetTypeAssertError("string", y, "address")
 		}
 	}
 
@@ -444,7 +464,7 @@ func (p *Poloniex) GetAuthenticatedOrderStatus(ctx context.Context, orderID stri
 	values := url.Values{}
 
 	if orderID == "" {
-		return o, fmt.Errorf("no orderID passed")
+		return o, errors.New("no orderID passed")
 	}
 
 	values.Set("orderNumber", orderID)
@@ -482,7 +502,7 @@ func (p *Poloniex) GetAuthenticatedOrderTrades(ctx context.Context, orderID stri
 	values := url.Values{}
 
 	if orderID == "" {
-		return nil, fmt.Errorf("no orderId passed")
+		return nil, errors.New("no orderID passed")
 	}
 
 	values.Set("orderNumber", orderID)
@@ -493,7 +513,7 @@ func (p *Poloniex) GetAuthenticatedOrderTrades(ctx context.Context, orderID stri
 	}
 
 	if len(result) == 0 {
-		return nil, fmt.Errorf("received unexpected response")
+		return nil, errors.New("received unexpected response")
 	}
 
 	switch result[0] {
@@ -509,7 +529,7 @@ func (p *Poloniex) GetAuthenticatedOrderTrades(ctx context.Context, orderID stri
 	case '[': // data received
 		err = json.Unmarshal(result, &o)
 	default:
-		return nil, fmt.Errorf("received unexpected response")
+		return nil, errors.New("received unexpected response")
 	}
 
 	return o, err
@@ -863,6 +883,41 @@ func (p *Poloniex) ToggleAutoRenew(ctx context.Context, orderNumber int64) (bool
 	return true, nil
 }
 
+// WalletActivity returns the wallet activity between set start and end time
+func (p *Poloniex) WalletActivity(ctx context.Context, start, end time.Time, activityType string) (*WalletActivityResponse, error) {
+	values := url.Values{}
+	err := common.StartEndTimeCheck(start, end)
+	if err != nil {
+		return nil, err
+	}
+	values.Set("start", strconv.FormatInt(start.Unix(), 10))
+	values.Set("end", strconv.FormatInt(end.Unix(), 10))
+	if activityType != "" {
+		values.Set("activityType", activityType)
+	}
+	var resp WalletActivityResponse
+	return &resp, p.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, http.MethodGet,
+		poloniexWalletActivity,
+		values,
+		&resp)
+}
+
+// CancelMultipleOrdersByIDs Batch cancel one or many smart orders in an account by IDs.
+func (p *Poloniex) CancelMultipleOrdersByIDs(ctx context.Context, orderIDs, clientOrderIDs []string) ([]CancelOrdersResponse, error) {
+	values := url.Values{}
+	if len(orderIDs) > 0 {
+		values.Set("orderIds", strings.Join(orderIDs, ","))
+	}
+	if len(clientOrderIDs) > 0 {
+		values.Set("clientOrderIds", strings.Join(clientOrderIDs, ","))
+	}
+	var result []CancelOrdersResponse
+	return result, p.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, http.MethodDelete,
+		poloniexCancelByIDs,
+		values,
+		&result)
+}
+
 // SendHTTPRequest sends an unauthenticated HTTP request
 func (p *Poloniex) SendHTTPRequest(ctx context.Context, ep exchange.URL, path string, result interface{}) error {
 	endpoint, err := p.API.Endpoints.GetURL(ep)
@@ -879,9 +934,9 @@ func (p *Poloniex) SendHTTPRequest(ctx context.Context, ep exchange.URL, path st
 		HTTPRecording: p.HTTPRecording,
 	}
 
-	return p.SendPayload(ctx, request.Unset, func() (*request.Item, error) {
+	return p.SendPayload(ctx, request.UnAuth, func() (*request.Item, error) {
 		return item, nil
-	})
+	}, request.UnauthenticatedRequest)
 }
 
 // SendAuthenticatedHTTPRequest sends an authenticated HTTP request
@@ -895,11 +950,11 @@ func (p *Poloniex) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange
 		return err
 	}
 
-	return p.SendPayload(ctx, request.Unset, func() (*request.Item, error) {
+	return p.SendPayload(ctx, request.Auth, func() (*request.Item, error) {
 		headers := make(map[string]string)
 		headers["Content-Type"] = "application/x-www-form-urlencoded"
 		headers["Key"] = creds.Key
-		values.Set("nonce", p.Requester.GetNonce(true).String())
+		values.Set("nonce", p.Requester.GetNonce(nonce.UnixNano).String())
 		values.Set("command", endpoint)
 
 		hmac, err := crypto.GetHMAC(crypto.HashSHA512,
@@ -917,13 +972,12 @@ func (p *Poloniex) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange
 			Headers:       headers,
 			Body:          bytes.NewBufferString(values.Encode()),
 			Result:        result,
-			AuthRequest:   true,
 			NonceEnabled:  true,
 			Verbose:       p.Verbose,
 			HTTPDebugging: p.HTTPDebugging,
 			HTTPRecording: p.HTTPRecording,
 		}, nil
-	})
+	}, request.AuthenticatedRequest)
 }
 
 // GetFee returns an estimate of fee based on type of transaction

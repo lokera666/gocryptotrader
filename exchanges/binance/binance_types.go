@@ -7,9 +7,8 @@ import (
 	"github.com/shopspring/decimal"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/types"
 )
-
-const wsRateLimitMilliseconds = 250
 
 // withdrawals status codes description
 const (
@@ -22,51 +21,69 @@ const (
 	Completed
 )
 
+type filterType string
+
+const (
+	priceFilter              filterType = "PRICE_FILTER"
+	lotSizeFilter            filterType = "LOT_SIZE"
+	icebergPartsFilter       filterType = "ICEBERG_PARTS"
+	marketLotSizeFilter      filterType = "MARKET_LOT_SIZE"
+	trailingDeltaFilter      filterType = "TRAILING_DELTA"
+	percentPriceFilter       filterType = "PERCENT_PRICE"
+	percentPriceBySizeFilter filterType = "PERCENT_PRICE_BY_SIDE"
+	notionalFilter           filterType = "NOTIONAL"
+	maxNumOrdersFilter       filterType = "MAX_NUM_ORDERS"
+	maxNumAlgoOrdersFilter   filterType = "MAX_NUM_ALGO_ORDERS"
+)
+
 // ExchangeInfo holds the full exchange information type
 type ExchangeInfo struct {
 	Code       int       `json:"code"`
 	Msg        string    `json:"msg"`
 	Timezone   string    `json:"timezone"`
-	Servertime time.Time `json:"serverTime"`
-	RateLimits []struct {
+	ServerTime time.Time `json:"serverTime"`
+	RateLimits []*struct {
 		RateLimitType string `json:"rateLimitType"`
 		Interval      string `json:"interval"`
 		Limit         int    `json:"limit"`
 	} `json:"rateLimits"`
 	ExchangeFilters interface{} `json:"exchangeFilters"`
-	Symbols         []struct {
-		Symbol                     string   `json:"symbol"`
-		Status                     string   `json:"status"`
-		BaseAsset                  string   `json:"baseAsset"`
-		BaseAssetPrecision         int      `json:"baseAssetPrecision"`
-		QuoteAsset                 string   `json:"quoteAsset"`
-		QuotePrecision             int      `json:"quotePrecision"`
-		OrderTypes                 []string `json:"orderTypes"`
-		IcebergAllowed             bool     `json:"icebergAllowed"`
-		OCOAllowed                 bool     `json:"ocoAllowed"`
-		QuoteOrderQtyMarketAllowed bool     `json:"quoteOrderQtyMarketAllowed"`
-		IsSpotTradingAllowed       bool     `json:"isSpotTradingAllowed"`
-		IsMarginTradingAllowed     bool     `json:"isMarginTradingAllowed"`
-		Filters                    []struct {
-			FilterType          string  `json:"filterType"`
-			MinPrice            float64 `json:"minPrice,string"`
-			MaxPrice            float64 `json:"maxPrice,string"`
-			TickSize            float64 `json:"tickSize,string"`
-			MultiplierUp        float64 `json:"multiplierUp,string"`
-			MultiplierDown      float64 `json:"multiplierDown,string"`
-			AvgPriceMinutes     int64   `json:"avgPriceMins"`
-			MinQty              float64 `json:"minQty,string"`
-			MaxQty              float64 `json:"maxQty,string"`
-			StepSize            float64 `json:"stepSize,string"`
-			MinNotional         float64 `json:"minNotional,string"`
-			ApplyToMarket       bool    `json:"applyToMarket"`
-			Limit               int64   `json:"limit"`
-			MaxNumAlgoOrders    int64   `json:"maxNumAlgoOrders"`
-			MaxNumIcebergOrders int64   `json:"maxNumIcebergOrders"`
-			MaxNumOrders        int64   `json:"maxNumOrders"`
-		} `json:"filters"`
-		Permissions []string `json:"permissions"`
+	Symbols         []*struct {
+		Symbol                     string        `json:"symbol"`
+		Status                     string        `json:"status"`
+		BaseAsset                  string        `json:"baseAsset"`
+		BaseAssetPrecision         int           `json:"baseAssetPrecision"`
+		QuoteAsset                 string        `json:"quoteAsset"`
+		QuotePrecision             int           `json:"quotePrecision"`
+		OrderTypes                 []string      `json:"orderTypes"`
+		IcebergAllowed             bool          `json:"icebergAllowed"`
+		OCOAllowed                 bool          `json:"ocoAllowed"`
+		QuoteOrderQtyMarketAllowed bool          `json:"quoteOrderQtyMarketAllowed"`
+		IsSpotTradingAllowed       bool          `json:"isSpotTradingAllowed"`
+		IsMarginTradingAllowed     bool          `json:"isMarginTradingAllowed"`
+		Filters                    []*filterData `json:"filters"`
+		Permissions                []string      `json:"permissions"`
+		PermissionSets             [][]string    `json:"permissionSets"`
 	} `json:"symbols"`
+}
+
+type filterData struct {
+	FilterType          filterType `json:"filterType"`
+	MinPrice            float64    `json:"minPrice,string"`
+	MaxPrice            float64    `json:"maxPrice,string"`
+	TickSize            float64    `json:"tickSize,string"`
+	MultiplierUp        float64    `json:"multiplierUp,string"`
+	MultiplierDown      float64    `json:"multiplierDown,string"`
+	AvgPriceMinutes     int64      `json:"avgPriceMins"`
+	MinQty              float64    `json:"minQty,string"`
+	MaxQty              float64    `json:"maxQty,string"`
+	StepSize            float64    `json:"stepSize,string"`
+	MinNotional         float64    `json:"minNotional,string"`
+	ApplyToMarket       bool       `json:"applyToMarket"`
+	Limit               int64      `json:"limit"`
+	MaxNumAlgoOrders    int64      `json:"maxNumAlgoOrders"`
+	MaxNumIcebergOrders int64      `json:"maxNumIcebergOrders"`
+	MaxNumOrders        int64      `json:"maxNumOrders"`
 }
 
 // CoinInfo stores information about all supported coins
@@ -140,18 +157,18 @@ type OrderBook struct {
 type DepthUpdateParams []struct {
 	PriceLevel float64
 	Quantity   float64
-	ingnore    []interface{}
+	ignore     []interface{}
 }
 
 // WebsocketDepthStream is the difference for the update depth stream
 type WebsocketDepthStream struct {
-	Event         string           `json:"e"`
-	Timestamp     time.Time        `json:"E"`
-	Pair          string           `json:"s"`
-	FirstUpdateID int64            `json:"U"`
-	LastUpdateID  int64            `json:"u"`
-	UpdateBids    [][2]interface{} `json:"b"`
-	UpdateAsks    [][2]interface{} `json:"a"`
+	Event         string            `json:"e"`
+	Timestamp     time.Time         `json:"E"`
+	Pair          string            `json:"s"`
+	FirstUpdateID int64             `json:"U"`
+	LastUpdateID  int64             `json:"u"`
+	UpdateBids    [][2]types.Number `json:"b"`
+	UpdateAsks    [][2]types.Number `json:"a"`
 }
 
 // RecentTradeRequestParams represents Klines request data.
@@ -172,17 +189,17 @@ type RecentTrade struct {
 
 // TradeStream holds the trade stream data
 type TradeStream struct {
-	EventType      string    `json:"e"`
-	EventTime      time.Time `json:"E"`
-	Symbol         string    `json:"s"`
-	TradeID        int64     `json:"t"`
-	Price          string    `json:"p"`
-	Quantity       string    `json:"q"`
-	BuyerOrderID   int64     `json:"b"`
-	SellerOrderID  int64     `json:"a"`
-	TimeStamp      time.Time `json:"T"`
-	Maker          bool      `json:"m"`
-	BestMatchPrice bool      `json:"M"`
+	EventType      string       `json:"e"`
+	EventTime      time.Time    `json:"E"`
+	Symbol         string       `json:"s"`
+	TradeID        int64        `json:"t"`
+	Price          types.Number `json:"p"`
+	Quantity       types.Number `json:"q"`
+	BuyerOrderID   int64        `json:"b"`
+	SellerOrderID  int64        `json:"a"`
+	TimeStamp      time.Time    `json:"T"`
+	IsBuyerMaker   bool         `json:"m"`
+	BestMatchPrice bool         `json:"M"`
 }
 
 // KlineStream holds the kline stream data
@@ -195,49 +212,49 @@ type KlineStream struct {
 
 // KlineStreamData defines kline streaming data
 type KlineStreamData struct {
-	StartTime                time.Time `json:"t"`
-	CloseTime                time.Time `json:"T"`
-	Symbol                   string    `json:"s"`
-	Interval                 string    `json:"i"`
-	FirstTradeID             int64     `json:"f"`
-	LastTradeID              int64     `json:"L"`
-	OpenPrice                float64   `json:"o,string"`
-	ClosePrice               float64   `json:"c,string"`
-	HighPrice                float64   `json:"h,string"`
-	LowPrice                 float64   `json:"l,string"`
-	Volume                   float64   `json:"v,string"`
-	NumberOfTrades           int64     `json:"n"`
-	KlineClosed              bool      `json:"x"`
-	Quote                    float64   `json:"q,string"`
-	TakerBuyBaseAssetVolume  float64   `json:"V,string"`
-	TakerBuyQuoteAssetVolume float64   `json:"Q,string"`
+	StartTime                time.Time    `json:"t"`
+	CloseTime                time.Time    `json:"T"`
+	Symbol                   string       `json:"s"`
+	Interval                 string       `json:"i"`
+	FirstTradeID             int64        `json:"f"`
+	LastTradeID              int64        `json:"L"`
+	OpenPrice                types.Number `json:"o"`
+	ClosePrice               types.Number `json:"c"`
+	HighPrice                types.Number `json:"h"`
+	LowPrice                 types.Number `json:"l"`
+	Volume                   types.Number `json:"v"`
+	NumberOfTrades           int64        `json:"n"`
+	KlineClosed              bool         `json:"x"`
+	Quote                    types.Number `json:"q"`
+	TakerBuyBaseAssetVolume  types.Number `json:"V"`
+	TakerBuyQuoteAssetVolume types.Number `json:"Q"`
 }
 
 // TickerStream holds the ticker stream data
 type TickerStream struct {
-	EventType              string    `json:"e"`
-	EventTime              time.Time `json:"E"`
-	Symbol                 string    `json:"s"`
-	PriceChange            float64   `json:"p,string"`
-	PriceChangePercent     float64   `json:"P,string"`
-	WeightedAvgPrice       float64   `json:"w,string"`
-	ClosePrice             float64   `json:"x,string"`
-	LastPrice              float64   `json:"c,string"`
-	LastPriceQuantity      float64   `json:"Q,string"`
-	BestBidPrice           float64   `json:"b,string"`
-	BestBidQuantity        float64   `json:"B,string"`
-	BestAskPrice           float64   `json:"a,string"`
-	BestAskQuantity        float64   `json:"A,string"`
-	OpenPrice              float64   `json:"o,string"`
-	HighPrice              float64   `json:"h,string"`
-	LowPrice               float64   `json:"l,string"`
-	TotalTradedVolume      float64   `json:"v,string"`
-	TotalTradedQuoteVolume float64   `json:"q,string"`
-	OpenTime               time.Time `json:"O"`
-	CloseTime              time.Time `json:"C"`
-	FirstTradeID           int64     `json:"F"`
-	LastTradeID            int64     `json:"L"`
-	NumberOfTrades         int64     `json:"n"`
+	EventType              string       `json:"e"`
+	EventTime              time.Time    `json:"E"`
+	Symbol                 string       `json:"s"`
+	PriceChange            types.Number `json:"p"`
+	PriceChangePercent     types.Number `json:"P"`
+	WeightedAvgPrice       types.Number `json:"w"`
+	ClosePrice             types.Number `json:"x"`
+	LastPrice              types.Number `json:"c"`
+	LastPriceQuantity      types.Number `json:"Q"`
+	BestBidPrice           types.Number `json:"b"`
+	BestBidQuantity        types.Number `json:"B"`
+	BestAskPrice           types.Number `json:"a"`
+	BestAskQuantity        types.Number `json:"A"`
+	OpenPrice              types.Number `json:"o"`
+	HighPrice              types.Number `json:"h"`
+	LowPrice               types.Number `json:"l"`
+	TotalTradedVolume      types.Number `json:"v"`
+	TotalTradedQuoteVolume types.Number `json:"q"`
+	OpenTime               time.Time    `json:"O"`
+	CloseTime              time.Time    `json:"C"`
+	FirstTradeID           int64        `json:"F"`
+	LastTradeID            int64        `json:"L"`
+	NumberOfTrades         int64        `json:"n"`
 }
 
 // HistoricalTrade holds recent trade data
@@ -271,20 +288,20 @@ type AggregatedTrade struct {
 	FirstTradeID   int64     `json:"f"`
 	LastTradeID    int64     `json:"l"`
 	TimeStamp      time.Time `json:"T"`
-	Maker          bool      `json:"m"`
+	IsBuyerMaker   bool      `json:"m"`
 	BestMatchPrice bool      `json:"M"`
 }
 
 // IndexMarkPrice stores data for index and mark prices
 type IndexMarkPrice struct {
-	Symbol               string  `json:"symbol"`
-	Pair                 string  `json:"pair"`
-	MarkPrice            float64 `json:"markPrice,string"`
-	IndexPrice           float64 `json:"indexPrice,string"`
-	EstimatedSettlePrice float64 `json:"estimatedSettlePrice,string"`
-	LastFundingRate      string  `json:"lastFundingRate"`
-	NextFundingTime      int64   `json:"nextFundingTime"`
-	Time                 int64   `json:"time"`
+	Symbol               string       `json:"symbol"`
+	Pair                 string       `json:"pair"`
+	MarkPrice            types.Number `json:"markPrice"`
+	IndexPrice           types.Number `json:"indexPrice"`
+	EstimatedSettlePrice types.Number `json:"estimatedSettlePrice"`
+	LastFundingRate      types.Number `json:"lastFundingRate"`
+	NextFundingTime      types.Time   `json:"nextFundingTime"`
+	Time                 types.Time   `json:"time"`
 }
 
 // CandleStick holds kline data
@@ -310,25 +327,27 @@ type AveragePrice struct {
 
 // PriceChangeStats contains statistics for the last 24 hours trade
 type PriceChangeStats struct {
-	Symbol             string    `json:"symbol"`
-	PriceChange        float64   `json:"priceChange,string"`
-	PriceChangePercent float64   `json:"priceChangePercent,string"`
-	WeightedAvgPrice   float64   `json:"weightedAvgPrice,string"`
-	PrevClosePrice     float64   `json:"prevClosePrice,string"`
-	LastPrice          float64   `json:"lastPrice,string"`
-	LastQty            float64   `json:"lastQty,string"`
-	BidPrice           float64   `json:"bidPrice,string"`
-	AskPrice           float64   `json:"askPrice,string"`
-	OpenPrice          float64   `json:"openPrice,string"`
-	HighPrice          float64   `json:"highPrice,string"`
-	LowPrice           float64   `json:"lowPrice,string"`
-	Volume             float64   `json:"volume,string"`
-	QuoteVolume        float64   `json:"quoteVolume,string"`
-	OpenTime           time.Time `json:"openTime"`
-	CloseTime          time.Time `json:"closeTime"`
-	FirstID            int64     `json:"firstId"`
-	LastID             int64     `json:"lastId"`
-	Count              int64     `json:"count"`
+	Symbol             string       `json:"symbol"`
+	PriceChange        types.Number `json:"priceChange"`
+	PriceChangePercent types.Number `json:"priceChangePercent"`
+	WeightedAvgPrice   types.Number `json:"weightedAvgPrice"`
+	PrevClosePrice     types.Number `json:"prevClosePrice"`
+	LastPrice          types.Number `json:"lastPrice"`
+	LastQty            types.Number `json:"lastQty"`
+	BidPrice           types.Number `json:"bidPrice"`
+	AskPrice           types.Number `json:"askPrice"`
+	BidQuantity        types.Number `json:"bidQty"`
+	AskQuantity        types.Number `json:"askQty"`
+	OpenPrice          types.Number `json:"openPrice"`
+	HighPrice          types.Number `json:"highPrice"`
+	LowPrice           types.Number `json:"lowPrice"`
+	Volume             types.Number `json:"volume"`
+	QuoteVolume        types.Number `json:"quoteVolume"`
+	OpenTime           time.Time    `json:"openTime"`
+	CloseTime          time.Time    `json:"closeTime"`
+	FirstID            int64        `json:"firstId"`
+	LastID             int64        `json:"lastId"`
+	Count              int64        `json:"count"`
 }
 
 // SymbolPrice holds basic symbol price
@@ -544,7 +563,7 @@ var WithdrawalFees = map[currency.Code]float64{
 	currency.LLT:     67.8,
 	currency.YOYO:    1,
 	currency.TRX:     1,
-	currency.STRAT:   0.1,
+	currency.STRAT:   0.1, //nolint:misspell // Not a misspelling
 	currency.SNGLS:   54,
 	currency.BQX:     3.9,
 	currency.KNC:     3.5,
@@ -706,18 +725,18 @@ type WithdrawResponse struct {
 
 // WithdrawStatusResponse defines a withdrawal status response
 type WithdrawStatusResponse struct {
-	Address         string  `json:"address"`
-	Amount          float64 `json:"amount,string"`
-	ApplyTime       string  `json:"applyTime"`
-	Coin            string  `json:"coin"`
-	ID              string  `json:"id"`
-	WithdrawOrderID string  `json:"withdrawOrderId"`
-	Network         string  `json:"network"`
-	TransferType    uint8   `json:"transferType"`
-	Status          int64   `json:"status"`
-	TransactionFee  float64 `json:"transactionFee,string"`
-	TransactionID   string  `json:"txId"`
-	ConfirmNumber   int64   `json:"confirmNo"`
+	Address         string     `json:"address"`
+	Amount          float64    `json:"amount,string"`
+	ApplyTime       types.Time `json:"applyTime"`
+	Coin            string     `json:"coin"`
+	ID              string     `json:"id"`
+	WithdrawOrderID string     `json:"withdrawOrderId"`
+	Network         string     `json:"network"`
+	TransferType    uint8      `json:"transferType"`
+	Status          int64      `json:"status"`
+	TransactionFee  float64    `json:"transactionFee,string"`
+	TransactionID   string     `json:"txId"`
+	ConfirmNumber   int64      `json:"confirmNo"`
 }
 
 // DepositAddress stores the deposit address info
@@ -732,11 +751,6 @@ type DepositAddress struct {
 // websocket connection
 type UserAccountStream struct {
 	ListenKey string `json:"listenKey"`
-}
-
-type wsAccountInfo struct {
-	Stream string            `json:"stream"`
-	Data   WsAccountInfoData `json:"data"`
 }
 
 // WsAccountInfoData defines websocket account info data
@@ -825,6 +839,7 @@ type WsOrderUpdateData struct {
 	IsMaker                           bool      `json:"m"`
 	Ignored2                          bool      `json:"M"` // See the comment for "I".
 	OrderCreationTime                 time.Time `json:"O"`
+	WorkingTime                       time.Time `json:"W"`
 	CumulativeQuoteTransactedQuantity float64   `json:"Z,string"`
 	LastQuoteAssetTransactedQuantity  float64   `json:"Y,string"`
 	QuoteOrderQuantity                float64   `json:"Q,string"`
@@ -894,8 +909,324 @@ type update struct {
 	lastUpdateID      int64
 }
 
-// job defines a synchonisation job that tells a go routine to fetch an
+// job defines a synchronisation job that tells a go routine to fetch an
 // orderbook via the REST protocol
 type job struct {
 	Pair currency.Pair
+}
+
+// UserMarginInterestHistoryResponse user margin interest history response
+type UserMarginInterestHistoryResponse struct {
+	Rows  []UserMarginInterestHistory `json:"rows"`
+	Total int64                       `json:"total"`
+}
+
+// UserMarginInterestHistory user margin interest history row
+type UserMarginInterestHistory struct {
+	TxID                int64      `json:"txId"`
+	InterestAccruedTime types.Time `json:"interestAccuredTime"` // typo in docs, cannot verify due to API restrictions
+	Asset               string     `json:"asset"`
+	RawAsset            string     `json:"rawAsset"`
+	Principal           float64    `json:"principal,string"`
+	Interest            float64    `json:"interest,string"`
+	InterestRate        float64    `json:"interestRate,string"`
+	Type                string     `json:"type"`
+	IsolatedSymbol      string     `json:"isolatedSymbol"`
+}
+
+// CryptoLoansIncomeHistory stores crypto loan income history data
+type CryptoLoansIncomeHistory struct {
+	Asset         currency.Code `json:"asset"`
+	Type          string        `json:"type"`
+	Amount        float64       `json:"amount,string"`
+	TransactionID int64         `json:"tranId"`
+}
+
+// CryptoLoanBorrow stores crypto loan borrow data
+type CryptoLoanBorrow struct {
+	LoanCoin           currency.Code `json:"loanCoin"`
+	Amount             float64       `json:"amount,string"`
+	CollateralCoin     currency.Code `json:"collateralCoin"`
+	CollateralAmount   float64       `json:"collateralAmount,string"`
+	HourlyInterestRate float64       `json:"hourlyInterestRate,string"`
+	OrderID            int64         `json:"orderId,string"`
+}
+
+// LoanBorrowHistoryItem stores loan borrow history item data
+type LoanBorrowHistoryItem struct {
+	OrderID                 int64         `json:"orderId"`
+	LoanCoin                currency.Code `json:"loanCoin"`
+	InitialLoanAmount       float64       `json:"initialLoanAmount,string"`
+	HourlyInterestRate      float64       `json:"hourlyInterestRate,string"`
+	LoanTerm                int64         `json:"loanTerm,string"`
+	CollateralCoin          currency.Code `json:"collateralCoin"`
+	InitialCollateralAmount float64       `json:"initialCollateralAmount,string"`
+	BorrowTime              types.Time    `json:"borrowTime"`
+	Status                  string        `json:"status"`
+}
+
+// LoanBorrowHistory stores loan borrow history data
+type LoanBorrowHistory struct {
+	Rows  []LoanBorrowHistoryItem `json:"rows"`
+	Total int64                   `json:"total"`
+}
+
+// CryptoLoanOngoingOrderItem stores crypto loan ongoing order item data
+type CryptoLoanOngoingOrderItem struct {
+	OrderID          int64         `json:"orderId"`
+	LoanCoin         currency.Code `json:"loanCoin"`
+	TotalDebt        float64       `json:"totalDebt,string"`
+	ResidualInterest float64       `json:"residualInterest,string"`
+	CollateralCoin   currency.Code `json:"collateralCoin"`
+	CollateralAmount float64       `json:"collateralAmount,string"`
+	CurrentLTV       float64       `json:"currentLTV,string"`
+	ExpirationTime   types.Time    `json:"expirationTime"`
+}
+
+// CryptoLoanOngoingOrder stores crypto loan ongoing order data
+type CryptoLoanOngoingOrder struct {
+	Rows  []CryptoLoanOngoingOrderItem `json:"rows"`
+	Total int64                        `json:"total"`
+}
+
+// CryptoLoanRepay stores crypto loan repayment data
+type CryptoLoanRepay struct {
+	LoanCoin            currency.Code `json:"loanCoin"`
+	RemainingPrincipal  float64       `json:"remainingPrincipal,string"`
+	RemainingInterest   float64       `json:"remainingInterest,string"`
+	CollateralCoin      currency.Code `json:"collateralCoin"`
+	RemainingCollateral float64       `json:"remainingCollateral,string"`
+	CurrentLTV          float64       `json:"currentLTV,string"`
+	RepayStatus         string        `json:"repayStatus"`
+}
+
+// CryptoLoanRepayHistoryItem stores crypto loan repayment history item data
+type CryptoLoanRepayHistoryItem struct {
+	LoanCoin         currency.Code `json:"loanCoin"`
+	RepayAmount      float64       `json:"repayAmount,string"`
+	CollateralCoin   currency.Code `json:"collateralCoin"`
+	CollateralUsed   float64       `json:"collateralUsed,string"`
+	CollateralReturn float64       `json:"collateralReturn,string"`
+	RepayType        string        `json:"repayType"`
+	RepayTime        types.Time    `json:"repayTime"`
+	OrderID          int64         `json:"orderId"`
+}
+
+// CryptoLoanRepayHistory stores crypto loan repayment history data
+type CryptoLoanRepayHistory struct {
+	Rows  []CryptoLoanRepayHistoryItem `json:"rows"`
+	Total int64                        `json:"total"`
+}
+
+// CryptoLoanAdjustLTV stores crypto loan LTV adjustment data
+type CryptoLoanAdjustLTV struct {
+	LoanCoin       currency.Code `json:"loanCoin"`
+	CollateralCoin currency.Code `json:"collateralCoin"`
+	Direction      string        `json:"direction"`
+	Amount         float64       `json:"amount,string"`
+	CurrentLTV     float64       `json:"currentLTV,string"`
+}
+
+// CryptoLoanLTVAdjustmentItem stores crypto loan LTV adjustment item data
+type CryptoLoanLTVAdjustmentItem struct {
+	LoanCoin       currency.Code `json:"loanCoin"`
+	CollateralCoin currency.Code `json:"collateralCoin"`
+	Direction      string        `json:"direction"`
+	Amount         float64       `json:"amount,string"`
+	PreviousLTV    float64       `json:"preLTV,string"`
+	AfterLTV       float64       `json:"afterLTV,string"`
+	AdjustTime     types.Time    `json:"adjustTime"`
+	OrderID        int64         `json:"orderId"`
+}
+
+// CryptoLoanLTVAdjustmentHistory stores crypto loan LTV adjustment history data
+type CryptoLoanLTVAdjustmentHistory struct {
+	Rows  []CryptoLoanLTVAdjustmentItem `json:"rows"`
+	Total int64                         `json:"total"`
+}
+
+// LoanableAssetItem stores loanable asset item data
+type LoanableAssetItem struct {
+	LoanCoin                             currency.Code `json:"loanCoin"`
+	SevenDayHourlyInterestRate           float64       `json:"_7dHourlyInterestRate,string"`
+	SevenDayDailyInterestRate            float64       `json:"_7dDailyInterestRate,string"`
+	FourteenDayHourlyInterest            float64       `json:"_14dHourlyInterestRate,string"`
+	FourteenDayDailyInterest             float64       `json:"_14dDailyInterestRate,string"`
+	ThirtyDayHourlyInterest              float64       `json:"_30dHourlyInterestRate,string"`
+	ThirtyDayDailyInterest               float64       `json:"_30dDailyInterestRate,string"`
+	NinetyDayHourlyInterest              float64       `json:"_90dHourlyInterestRate,string"`
+	NinetyDayDailyInterest               float64       `json:"_90dDailyInterestRate,string"`
+	OneHundredAndEightyDayHourlyInterest float64       `json:"_180dHourlyInterestRate,string"`
+	OneHundredAndEightyDayDailyInterest  float64       `json:"_180dDailyInterestRate,string"`
+	MinimumLimit                         float64       `json:"minLimit,string"`
+	MaximumLimit                         float64       `json:"maxLimit,string"`
+	VIPLevel                             int64         `json:"vipLevel"`
+}
+
+// LoanableAssetsData stores loanable assets data
+type LoanableAssetsData struct {
+	Rows  []LoanableAssetItem `json:"rows"`
+	Total int64               `json:"total"`
+}
+
+// CollateralAssetItem stores collateral asset item data
+type CollateralAssetItem struct {
+	CollateralCoin currency.Code `json:"collateralCoin"`
+	InitialLTV     float64       `json:"initialLTV,string"`
+	MarginCallLTV  float64       `json:"marginCallLTV,string"`
+	LiquidationLTV float64       `json:"liquidationLTV,string"`
+	MaxLimit       float64       `json:"maxLimit,string"`
+	VIPLevel       int64         `json:"vipLevel"`
+}
+
+// CollateralAssetData stores collateral asset data
+type CollateralAssetData struct {
+	Rows  []CollateralAssetItem `json:"rows"`
+	Total int64                 `json:"total"`
+}
+
+// CollateralRepayRate stores collateral repayment rate data
+type CollateralRepayRate struct {
+	LoanCoin       currency.Code `json:"loanCoin"`
+	CollateralCoin currency.Code `json:"collateralCoin"`
+	RepayAmount    float64       `json:"repayAmount,string"`
+	Rate           float64       `json:"rate,string"`
+}
+
+// CustomiseMarginCallItem stores customise margin call item data
+type CustomiseMarginCallItem struct {
+	OrderID         int64         `json:"orderId"`
+	CollateralCoin  currency.Code `json:"collateralCoin"`
+	PreMarginCall   float64       `json:"preMarginCall,string"`
+	AfterMarginCall float64       `json:"afterMarginCall,string"`
+	CustomiseTime   types.Time    `json:"customizeTime"`
+}
+
+// CustomiseMarginCall stores customise margin call data
+type CustomiseMarginCall struct {
+	Rows  []CustomiseMarginCallItem `json:"rows"`
+	Total int64                     `json:"total"`
+}
+
+// FlexibleLoanBorrow stores a flexible loan borrow
+type FlexibleLoanBorrow struct {
+	LoanCoin         currency.Code `json:"loanCoin"`
+	LoanAmount       float64       `json:"loanAmount,string"`
+	CollateralCoin   currency.Code `json:"collateralCoin"`
+	CollateralAmount float64       `json:"collateralAmount,string"`
+	Status           string        `json:"status"`
+}
+
+// FlexibleLoanOngoingOrderItem stores a flexible loan ongoing order item
+type FlexibleLoanOngoingOrderItem struct {
+	LoanCoin         currency.Code `json:"loanCoin"`
+	TotalDebt        float64       `json:"totalDebt,string"`
+	CollateralCoin   currency.Code `json:"collateralCoin"`
+	CollateralAmount float64       `json:"collateralAmount,string"`
+	CurrentLTV       float64       `json:"currentLTV,string"`
+}
+
+// FlexibleLoanOngoingOrder stores flexible loan ongoing orders
+type FlexibleLoanOngoingOrder struct {
+	Rows  []FlexibleLoanOngoingOrderItem `json:"rows"`
+	Total int64                          `json:"total"`
+}
+
+// FlexibleLoanBorrowHistoryItem stores a flexible loan borrow history item
+type FlexibleLoanBorrowHistoryItem struct {
+	LoanCoin                currency.Code `json:"loanCoin"`
+	InitialLoanAmount       float64       `json:"initialLoanAmount,string"`
+	CollateralCoin          currency.Code `json:"collateralCoin"`
+	InitialCollateralAmount float64       `json:"initialCollateralAmount,string"`
+	BorrowTime              types.Time    `json:"borrowTime"`
+	Status                  string        `json:"status"`
+}
+
+// FlexibleLoanBorrowHistory stores flexible loan borrow history
+type FlexibleLoanBorrowHistory struct {
+	Rows  []FlexibleLoanBorrowHistoryItem `json:"rows"`
+	Total int64                           `json:"total"`
+}
+
+// FlexibleLoanRepay stores a flexible loan repayment
+type FlexibleLoanRepay struct {
+	LoanCoin            currency.Code `json:"loanCoin"`
+	CollateralCoin      currency.Code `json:"collateralCoin"`
+	RemainingDebt       float64       `json:"remainingDebt,string"`
+	RemainingCollateral float64       `json:"remainingCollateral,string"`
+	FullRepayment       bool          `json:"fullRepayment"`
+	CurrentLTV          float64       `json:"currentLTV,string"`
+	RepayStatus         string        `json:"repayStatus"`
+}
+
+// FlexibleLoanRepayHistoryItem stores a flexible loan repayment history item
+type FlexibleLoanRepayHistoryItem struct {
+	LoanCoin         currency.Code `json:"loanCoin"`
+	RepayAmount      float64       `json:"repayAmount,string"`
+	CollateralCoin   currency.Code `json:"collateralCoin"`
+	CollateralReturn float64       `json:"collateralReturn,string"`
+	RepayStatus      string        `json:"repayStatus"`
+	RepayTime        types.Time    `json:"repayTime"`
+}
+
+// FlexibleLoanRepayHistory stores flexible loan repayment history
+type FlexibleLoanRepayHistory struct {
+	Rows  []FlexibleLoanRepayHistoryItem `json:"rows"`
+	Total int64                          `json:"total"`
+}
+
+// FlexibleLoanAdjustLTV stores a flexible loan LTV adjustment
+type FlexibleLoanAdjustLTV struct {
+	LoanCoin       currency.Code `json:"loanCoin"`
+	CollateralCoin currency.Code `json:"collateralCoin"`
+	Direction      string        `json:"direction"`
+	Amount         float64       `json:"amount,string"` // docs error: API actually returns "amount" instead of "adjustedAmount"
+	CurrentLTV     float64       `json:"currentLTV,string"`
+	Status         string        `json:"status"`
+}
+
+// FlexibleLoanLTVAdjustmentHistoryItem stores a flexible loan LTV adjustment history item
+type FlexibleLoanLTVAdjustmentHistoryItem struct {
+	LoanCoin         currency.Code `json:"loanCoin"`
+	CollateralCoin   currency.Code `json:"collateralCoin"`
+	Direction        string        `json:"direction"`
+	CollateralAmount float64       `json:"collateralAmount,string"`
+	PreviousLTV      float64       `json:"preLTV,string"`
+	AfterLTV         float64       `json:"afterLTV,string"`
+	AdjustTime       types.Time    `json:"adjustTime"`
+}
+
+// FlexibleLoanLTVAdjustmentHistory stores flexible loan LTV adjustment history
+type FlexibleLoanLTVAdjustmentHistory struct {
+	Rows  []FlexibleLoanLTVAdjustmentHistoryItem `json:"rows"`
+	Total int64                                  `json:"total"`
+}
+
+// FlexibleLoanAssetsDataItem stores a flexible loan asset data item
+type FlexibleLoanAssetsDataItem struct {
+	LoanCoin             currency.Code `json:"loanCoin"`
+	FlexibleInterestRate float64       `json:"flexibleInterestRate,string"`
+	FlexibleMinLimit     float64       `json:"flexibleMinLimit,string"`
+	FlexibleMaxLimit     float64       `json:"flexibleMaxLimit,string"`
+}
+
+// FlexibleLoanAssetsData stores flexible loan asset data
+type FlexibleLoanAssetsData struct {
+	Rows  []FlexibleLoanAssetsDataItem `json:"rows"`
+	Total int64                        `json:"total"`
+}
+
+// FlexibleCollateralAssetsDataItem stores a flexible collateral asset data item
+type FlexibleCollateralAssetsDataItem struct {
+	CollateralCoin currency.Code `json:"collateralCoin"`
+	InitialLTV     float64       `json:"initialLTV,string"`
+	MarginCallLTV  float64       `json:"marginCallLTV,string"`
+	LiquidationLTV float64       `json:"liquidationLTV,string"`
+	MaxLimit       float64       `json:"maxLimit,string"`
+}
+
+// FlexibleCollateralAssetsData stores flexible collateral asset data
+type FlexibleCollateralAssetsData struct {
+	Rows  []FlexibleCollateralAssetsDataItem `json:"rows"`
+	Total int64                              `json:"total"`
 }

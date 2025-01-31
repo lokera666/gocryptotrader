@@ -21,7 +21,7 @@ var (
 	// completely empty but an attempt at retrieving credentials was made to
 	// undertake an authenticated HTTP request.
 	ErrCredentialsAreEmpty = errors.New("credentials are empty")
-
+	// Errors related to API requirements and failures
 	errRequiresAPIKey            = errors.New("requires API key but default/empty one set")
 	errRequiresAPISecret         = errors.New("requires API secret but default/empty one set")
 	errRequiresAPIPEMKey         = errors.New("requires API PEM key but default/empty one set")
@@ -34,9 +34,6 @@ var (
 func (a *API) SetKey(key string) {
 	a.credMu.Lock()
 	defer a.credMu.Unlock()
-	if a.credentials == nil {
-		a.credentials = &account.Credentials{}
-	}
 	a.credentials.Key = key
 }
 
@@ -44,9 +41,6 @@ func (a *API) SetKey(key string) {
 func (a *API) SetSecret(secret string) {
 	a.credMu.Lock()
 	defer a.credMu.Unlock()
-	if a.credentials == nil {
-		a.credentials = &account.Credentials{}
-	}
 	a.credentials.Secret = secret
 }
 
@@ -54,9 +48,6 @@ func (a *API) SetSecret(secret string) {
 func (a *API) SetClientID(clientID string) {
 	a.credMu.Lock()
 	defer a.credMu.Unlock()
-	if a.credentials == nil {
-		a.credentials = &account.Credentials{}
-	}
 	a.credentials.ClientID = clientID
 }
 
@@ -64,9 +55,6 @@ func (a *API) SetClientID(clientID string) {
 func (a *API) SetPEMKey(pem string) {
 	a.credMu.Lock()
 	defer a.credMu.Unlock()
-	if a.credentials == nil {
-		a.credentials = &account.Credentials{}
-	}
 	a.credentials.PEMKey = pem
 }
 
@@ -74,9 +62,6 @@ func (a *API) SetPEMKey(pem string) {
 func (a *API) SetSubAccount(sub string) {
 	a.credMu.Lock()
 	defer a.credMu.Unlock()
-	if a.credentials == nil {
-		a.credentials = &account.Credentials{}
-	}
 	a.credentials.SubAccount = sub
 }
 
@@ -90,7 +75,7 @@ func (b *Base) CheckCredentials(creds *account.Credentials, isContext bool) erro
 	// Individual package usage, allow request if API credentials are valid a
 	// and without needing to set AuthenticatedSupport to true
 	if !b.LoadedByConfig {
-		return b.ValidateAPICredentials(creds)
+		return b.VerifyAPICredentials(creds)
 	}
 
 	// Bot usage, AuthenticatedSupport can be disabled by user if desired, so
@@ -102,13 +87,13 @@ func (b *Base) CheckCredentials(creds *account.Credentials, isContext bool) erro
 
 	// Check to see if the user has enabled AuthenticatedSupport, but has
 	// invalid API credentials set and loaded by config
-	return b.ValidateAPICredentials(creds)
+	return b.VerifyAPICredentials(creds)
 }
 
 // AreCredentialsValid returns if the supplied credentials are valid.
 func (b *Base) AreCredentialsValid(ctx context.Context) bool {
 	creds, err := b.GetCredentials(ctx)
-	return err == nil && b.ValidateAPICredentials(creds) == nil
+	return err == nil && b.VerifyAPICredentials(creds) == nil
 }
 
 // GetDefaultCredentials returns the exchange.Base api credentials loaded by
@@ -116,10 +101,10 @@ func (b *Base) AreCredentialsValid(ctx context.Context) bool {
 func (b *Base) GetDefaultCredentials() *account.Credentials {
 	b.API.credMu.RLock()
 	defer b.API.credMu.RUnlock()
-	if b.API.credentials == nil {
+	if b.API.credentials == (account.Credentials{}) {
 		return nil
 	}
-	creds := *b.API.credentials
+	creds := b.API.credentials
 	return &creds
 }
 
@@ -142,7 +127,8 @@ func (b *Base) GetCredentials(ctx context.Context) (*account.Credentials, error)
 		return creds, nil
 	}
 
-	err := b.CheckCredentials(b.API.credentials, false)
+	creds := b.API.credentials
+	err := b.CheckCredentials(&creds, false)
 	if err != nil {
 		// NOTE: Return empty credentials on error to limit panic on websocket
 		// handling.
@@ -151,15 +137,14 @@ func (b *Base) GetCredentials(ctx context.Context) (*account.Credentials, error)
 	subAccountOverride, ok := ctx.Value(account.ContextSubAccountFlag).(string)
 	b.API.credMu.RLock()
 	defer b.API.credMu.RUnlock()
-	creds := *b.API.credentials
 	if ok {
 		creds.SubAccount = subAccountOverride
 	}
 	return &creds, nil
 }
 
-// ValidateAPICredentials validates the exchanges API credentials
-func (b *Base) ValidateAPICredentials(creds *account.Credentials) error {
+// VerifyAPICredentials verifies the exchanges API credentials
+func (b *Base) VerifyAPICredentials(creds *account.Credentials) error {
 	b.API.credMu.RLock()
 	defer b.API.credMu.RUnlock()
 	if creds.IsEmpty() {
@@ -185,12 +170,15 @@ func (b *Base) ValidateAPICredentials(creds *account.Credentials) error {
 		return fmt.Errorf("%s %w", b.Name, errRequiresAPIClientID)
 	}
 
-	if b.API.CredentialsValidator.RequiresBase64DecodeSecret && !b.LoadedByConfig {
-		_, err := crypto.Base64Decode(creds.Secret)
+	if b.API.CredentialsValidator.RequiresBase64DecodeSecret && !creds.SecretBase64Decoded {
+		decodedResult, err := crypto.Base64Decode(creds.Secret)
 		if err != nil {
 			return fmt.Errorf("%s API secret %w: %s", b.Name, errBase64DecodeFailure, err)
 		}
+		creds.Secret = string(decodedResult)
+		creds.SecretBase64Decoded = true
 	}
+
 	return nil
 }
 
@@ -198,9 +186,6 @@ func (b *Base) ValidateAPICredentials(creds *account.Credentials) error {
 func (b *Base) SetCredentials(apiKey, apiSecret, clientID, subaccount, pemKey, oneTimePassword string) {
 	b.API.credMu.Lock()
 	defer b.API.credMu.Unlock()
-	if b.API.credentials == nil {
-		b.API.credentials = &account.Credentials{}
-	}
 	b.API.credentials.Key = apiKey
 	b.API.credentials.ClientID = clientID
 	b.API.credentials.SubAccount = subaccount
@@ -218,6 +203,7 @@ func (b *Base) SetCredentials(apiKey, apiSecret, clientID, subaccount, pemKey, o
 			return
 		}
 		b.API.credentials.Secret = string(result)
+		b.API.credentials.SecretBase64Decoded = true
 	} else {
 		b.API.credentials.Secret = apiSecret
 	}
@@ -227,29 +213,13 @@ func (b *Base) SetCredentials(apiKey, apiSecret, clientID, subaccount, pemKey, o
 func (b *Base) SetAPICredentialDefaults() {
 	b.API.credMu.Lock()
 	defer b.API.credMu.Unlock()
+
 	// Exchange hardcoded settings take precedence and overwrite the config settings
 	if b.Config.API.CredentialsValidator == nil {
 		b.Config.API.CredentialsValidator = new(config.APICredentialsValidatorConfig)
 	}
-	if b.Config.API.CredentialsValidator.RequiresKey != b.API.CredentialsValidator.RequiresKey {
-		b.Config.API.CredentialsValidator.RequiresKey = b.API.CredentialsValidator.RequiresKey
-	}
 
-	if b.Config.API.CredentialsValidator.RequiresSecret != b.API.CredentialsValidator.RequiresSecret {
-		b.Config.API.CredentialsValidator.RequiresSecret = b.API.CredentialsValidator.RequiresSecret
-	}
-
-	if b.Config.API.CredentialsValidator.RequiresBase64DecodeSecret != b.API.CredentialsValidator.RequiresBase64DecodeSecret {
-		b.Config.API.CredentialsValidator.RequiresBase64DecodeSecret = b.API.CredentialsValidator.RequiresBase64DecodeSecret
-	}
-
-	if b.Config.API.CredentialsValidator.RequiresClientID != b.API.CredentialsValidator.RequiresClientID {
-		b.Config.API.CredentialsValidator.RequiresClientID = b.API.CredentialsValidator.RequiresClientID
-	}
-
-	if b.Config.API.CredentialsValidator.RequiresPEM != b.API.CredentialsValidator.RequiresPEM {
-		b.Config.API.CredentialsValidator.RequiresPEM = b.API.CredentialsValidator.RequiresPEM
-	}
+	*b.Config.API.CredentialsValidator = b.API.CredentialsValidator
 }
 
 // IsWebsocketAuthenticationSupported returns whether the exchange supports

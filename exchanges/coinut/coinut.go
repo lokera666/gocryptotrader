@@ -22,6 +22,7 @@ import (
 
 const (
 	coinutAPIURL          = "https://api.coinut.com"
+	tradeBaseURL          = "https://coinut.com/spot/"
 	coinutAPIVersion      = "1"
 	coinutInstruments     = "inst_list"
 	coinutTicker          = "inst_tick"
@@ -42,7 +43,6 @@ const (
 	coinutStatusOK = "OK"
 	coinutMaxNonce = 16777215 // See https://github.com/coinut/api/wiki/Websocket-API#nonce
 
-	wsRateLimitInMilliseconds = 33
 )
 
 var errLookupInstrumentID = errors.New("unable to lookup instrument ID")
@@ -263,6 +263,10 @@ func (c *COINUT) SendHTTPRequest(ctx context.Context, ep exchange.URL, apiReques
 		params = map[string]interface{}{}
 	}
 
+	requestType := request.AuthType(request.UnauthenticatedRequest)
+	if authenticated {
+		requestType = request.AuthenticatedRequest
+	}
 	var rawMsg json.RawMessage
 	err = c.SendPayload(ctx, request.Unset, func() (*request.Item, error) {
 		params["nonce"] = getNonce()
@@ -299,13 +303,12 @@ func (c *COINUT) SendHTTPRequest(ctx context.Context, ep exchange.URL, apiReques
 			Headers:       headers,
 			Body:          bytes.NewBuffer(payload),
 			Result:        &rawMsg,
-			AuthRequest:   authenticated,
 			NonceEnabled:  true,
 			Verbose:       c.Verbose,
 			HTTPDebugging: c.HTTPDebugging,
 			HTTPRecording: c.HTTPRecording,
 		}, nil
-	})
+	}, requestType)
 	if err != nil {
 		return err
 	}
@@ -317,9 +320,10 @@ func (c *COINUT) SendHTTPRequest(ctx context.Context, ep exchange.URL, apiReques
 	}
 
 	if genResp.Status[0] != coinutStatusOK {
-		return fmt.Errorf("%s SendHTTPRequest error: %s",
-			c.Name,
-			genResp.Status[0])
+		if authenticated {
+			return fmt.Errorf("%w %v", request.ErrAuthRequestFailed, genResp.Status[0])
+		}
+		return fmt.Errorf("%s SendHTTPRequest error: %s", c.Name, genResp.Status[0])
 	}
 
 	return json.Unmarshal(rawMsg, result)
@@ -411,7 +415,7 @@ func getInternationalBankDepositFee(c currency.Code, amount float64) float64 {
 		} else {
 			fee = amount * 0.001
 		}
-	} else if c == currency.CAD {
+	} else if c.Equal(currency.CAD) {
 		if amount*0.005 < 10 {
 			fee = 2
 		} else {

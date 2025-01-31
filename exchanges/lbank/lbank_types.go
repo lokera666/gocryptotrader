@@ -24,7 +24,7 @@ type TickerResponse struct {
 	Ticker    Ticker        `json:"ticker"`
 }
 
-// MarketDepthResponse stores arrays for asks, bids and a timestamp for a currecy pair
+// MarketDepthResponse stores arrays for asks, bids and a timestamp for a currency pair
 type MarketDepthResponse struct {
 	ErrCapture `json:",omitempty"`
 	Data       struct {
@@ -234,6 +234,11 @@ type ErrCapture struct {
 type GetAllOpenIDResp struct {
 	CurrencyPair string
 	OrderID      string
+}
+
+// TimestampResponse holds timestamp data
+type TimestampResponse struct {
+	Timestamp int64 `json:"data"`
 }
 
 var errorCodes = map[int64]string{

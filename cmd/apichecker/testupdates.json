@@ -73,17 +73,6 @@
    "Disabled": false
   },
   {
-   "Name": "Bittrex",
-   "CheckType": "GitHub Sha Check",
-   "Data": {
-    "GitHubData": {
-     "Repo": "Bittrex/bittrex.github.io",
-     "Sha": "fc1ea9c10c48aa82c4dc2c6be74887ef61b5b31b"
-    }
-   },
-   "Disabled": false
-  },
-  {
    "Name": "Coinut",
    "CheckType": "GitHub Sha Check",
    "Data": {
@@ -176,20 +165,6 @@
      "RegExp": "(2\\d{3}-\\d{1,2}-\\d{1,2})",
      "CheckString": "2020-03-24",
      "Path": "https://docs.poloniex.com/#changelog"
-    }
-   },
-   "Disabled": false
-  },
-  {
-   "Name": "ItBit",
-   "CheckType": "HTML String Check",
-   "Data": {
-    "HTMLData": {
-     "TokenData": "a",
-     "Key": "href",
-     "RegExp": "^https://api.itbit.com/v\\d{1}/$",
-     "CheckString": "https://api.itbit.com/v1/",
-     "Path": "https://api.itbit.com/docs"
     }
    },
    "Disabled": false
@@ -328,53 +303,6 @@
    "Disabled": false
   },
   {
-   "Name": "LocalBitcoins",
-   "CheckType": "HTML String Check",
-   "Data": {
-    "HTMLData": {
-     "TokenData": "div",
-     "Key": "class",
-     "Val": "col-md-12",
-     "RegExp": "col-md-12([\\s\\S]*?)clearfix",
-     "CheckString": "37a144dc619776b87c098da5a88bef7fed6c8a7cea2d4b9a38c96750726c93ff",
-     "Path": "https://localbitcoins.com/api-docs/"
-    }
-   },
-   "Disabled": false
-  },
-  {
-   "Name": "OkCoin International",
-   "CheckType": "HTML String Check",
-   "Data": {
-    "HTMLData": {
-     "TokenData": "a",
-     "Key": "href",
-     "Val": "./#change-change",
-     "TokenDataEnd": "./#change-",
-     "RegExp": "./#change-\\d{8}",
-     "CheckString": "20200229",
-     "Path": "https://www.okcoin.com/docs/en/#change-change"
-    }
-   },
-   "Disabled": false
-  },
-  {
-   "Name": "Okex",
-   "CheckType": "HTML String Check",
-   "Data": {
-    "HTMLData": {
-     "TokenData": "a",
-     "Key": "href",
-     "Val": "./#change-change",
-     "TokenDataEnd": "./#change-",
-     "RegExp": "./#change-\\d{8}",
-     "CheckString": "20200331",
-     "Path": "https://www.okex.com/docs/en/#change-change"
-    }
-   },
-   "Disabled": false
-  },
-  {
    "Name": "Gemini",
    "CheckType": "HTML String Check",
    "Data": {
@@ -388,20 +316,6 @@
      "RegExp": "^20(\\d){2}/(\\d){2}/(\\d){2}$",
      "CheckString": "2020/03/05",
      "Path": "https://docs.gemini.com/rest-api/#revision-history"
-    }
-   },
-   "Disabled": false
-  },
-  {
-   "Name": "FTX",
-   "CheckType": "HTML String Check",
-   "Data": {
-    "HTMLData": {
-     "Key": "class",
-     "Val": "css-truncate css-truncate-target",
-     "TokenDataEnd": "td",
-     "CheckString": "65e8800b5c6800aad896f888b2a62afc-d29c4f140f6ca068db9970054076ba63e51a9e96bf56d570e62cdb573c86b18526296117-1c388b9ec24e52ca4537240db3f48025ec9fca7a",
-     "Path": "https://github.com/ftexchange/ftx"
     }
    },
    "Disabled": false

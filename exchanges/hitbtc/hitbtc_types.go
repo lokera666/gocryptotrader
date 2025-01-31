@@ -292,27 +292,19 @@ type ResponseError struct {
 	Message string `json:"message"`
 }
 
-// WsRequest defines a request obj for the JSON-RPC and gets a websocket
-// response
+// WsRequest defines a request obj for the JSON-RPC and gets a websocket response
 type WsRequest struct {
-	Method string `json:"method"`
-	Params Params `json:"params,omitempty"`
-	ID     int64  `json:"id"`
+	JSONRPCVersion string    `json:"jsonrpc,omitempty"`
+	Method         string    `json:"method"`
+	Params         *WsParams `json:"params,omitempty"`
+	ID             int64     `json:"id,omitempty"`
 }
 
-// WsNotification defines a notification obj for the JSON-RPC this does not get
-// a websocket response
-type WsNotification struct {
-	JSONRPCVersion string `json:"jsonrpc,omitempty"`
-	Method         string `json:"method"`
-	Params         Params `json:"params"`
-}
-
-// Params is params
-type Params struct {
+// WsParams are websocket params for a request
+type WsParams struct {
 	Symbol  string   `json:"symbol,omitempty"`
 	Period  string   `json:"period,omitempty"`
-	Limit   int64    `json:"limit,omitempty"`
+	Limit   int      `json:"limit,omitempty"`
 	Symbols []string `json:"symbols,omitempty"`
 }
 
@@ -343,8 +335,9 @@ type WsOrderbook struct {
 			Price float64 `json:"price,string"`
 			Size  float64 `json:"size,string"`
 		} `json:"bid"`
-		Symbol   string `json:"symbol"`
-		Sequence int64  `json:"sequence"`
+		Symbol    string    `json:"symbol"`
+		Sequence  int64     `json:"sequence"`
+		Timestamp time.Time `json:"timestamp"`
 	} `json:"params"`
 }
 

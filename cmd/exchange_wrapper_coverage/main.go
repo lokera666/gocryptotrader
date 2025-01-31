@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -20,41 +21,47 @@ func main() {
 	}
 
 	engine.Bot.Settings = engine.Settings{
-		DisableExchangeAutoPairUpdates: true,
-		EnableDryRun:                   true,
+		CoreSettings: engine.CoreSettings{EnableDryRun: true},
+		ExchangeTuningSettings: engine.ExchangeTuningSettings{
+			DisableExchangeAutoPairUpdates: true,
+		},
 	}
 
 	engine.Bot.Config.PurgeExchangeAPICredentials()
-	engine.Bot.ExchangeManager = engine.SetupExchangeManager()
+	engine.Bot.ExchangeManager = engine.NewExchangeManager()
 
 	log.Printf("Loading exchanges..")
 	var wg sync.WaitGroup
-	for x := range exchange.Exchanges {
-		err = engine.Bot.LoadExchange(exchange.Exchanges[x], &wg)
-		if err != nil {
-			log.Printf("Failed to load exchange %s. Err: %s",
-				exchange.Exchanges[x],
-				err)
-			continue
-		}
+	for i := range exchange.Exchanges {
+		name := exchange.Exchanges[i]
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := engine.Bot.LoadExchange(name); err != nil {
+				log.Printf("Failed to load exchange %s. Err: %s", name, err)
+			}
+		}()
 	}
 	wg.Wait()
 	log.Println("Done.")
 
 	log.Printf("Testing exchange wrappers..")
 	results := make(map[string][]string)
-	wg = sync.WaitGroup{}
+	var mtx sync.Mutex
+
 	exchanges := engine.Bot.GetExchanges()
 	for x := range exchanges {
-		exch := exchanges[x]
 		wg.Add(1)
-		go func(e exchange.IBotExchange) {
-			results[e.GetName()], err = testWrappers(e)
+		go func(exch exchange.IBotExchange) {
+			strResults, err := testWrappers(exch)
 			if err != nil {
-				fmt.Printf("failed to test wrappers for %s %s", e.GetName(), err)
+				log.Printf("Failed to test wrappers for %s. Err: %s", exch.GetName(), err)
 			}
+			mtx.Lock()
+			results[exch.GetName()] = strResults
+			mtx.Unlock()
 			wg.Done()
-		}(exch)
+		}(exchanges[x])
 	}
 	wg.Wait()
 	log.Println("Done.")
@@ -88,30 +95,50 @@ func testWrappers(e exchange.IBotExchange) ([]string, error) {
 	actualExchange := reflect.ValueOf(e)
 	errType := reflect.TypeOf(common.ErrNotYetImplemented)
 
+	contextParam := reflect.TypeOf((*context.Context)(nil)).Elem()
+
 	var funcs []string
-	for x := 0; x < iExchange.NumMethod(); x++ {
+	for x := range iExchange.NumMethod() {
 		name := iExchange.Method(x).Name
 		method := actualExchange.MethodByName(name)
 		inputs := make([]reflect.Value, method.Type().NumIn())
-		for y := 0; y < method.Type().NumIn(); y++ {
+
+		for y := range method.Type().NumIn() {
 			input := method.Type().In(y)
+
+			if input.Implements(contextParam) {
+				// Need to deploy a context.Context value as nil value is not
+				// checked throughout codebase. Cancelled to minimise external
+				// calls and speed up operation.
+				cancelled, cancelfn := context.WithTimeout(context.Background(), 0)
+				cancelfn()
+				inputs[y] = reflect.ValueOf(cancelled)
+				continue
+			}
 			inputs[y] = reflect.Zero(input)
 		}
 
 		outputs := method.Call(inputs)
+		if method.Type().NumIn() == 0 {
+			// Some empty functions will reset the exchange struct to defaults,
+			// so turn off verbosity.
+			e.GetBase().Verbose = false
+		}
+
 		for y := range outputs {
 			incoming := outputs[y].Interface()
-			if reflect.TypeOf(incoming) == errType {
-				err, ok := incoming.(error)
-				if !ok {
-					return nil, fmt.Errorf("%s type assertion failure for %v", name, incoming)
-				}
-				if errors.Is(err, common.ErrNotYetImplemented) {
-					funcs = append(funcs, name)
-				}
-				// found error; there should not be another error in this slice.
-				break
+			if reflect.TypeOf(incoming) != errType {
+				continue
 			}
+			err, ok := incoming.(error)
+			if !ok {
+				return nil, fmt.Errorf("%s type assertion failure for %v", name, incoming)
+			}
+			if errors.Is(err, common.ErrNotYetImplemented) {
+				funcs = append(funcs, name)
+			}
+			// found error; there should not be another error in this slice.
+			break
 		}
 	}
 	return funcs, nil

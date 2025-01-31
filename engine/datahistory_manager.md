@@ -6,7 +6,7 @@
 [![Build Status](https://github.com/thrasher-corp/gocryptotrader/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/thrasher-corp/gocryptotrader/actions/workflows/tests.yml)
 [![Software License](https://img.shields.io/badge/License-MIT-orange.svg?style=flat-square)](https://github.com/thrasher-corp/gocryptotrader/blob/master/LICENSE)
 [![GoDoc](https://godoc.org/github.com/thrasher-corp/gocryptotrader?status.svg)](https://godoc.org/github.com/thrasher-corp/gocryptotrader/engine/datahistory_manager)
-[![Coverage Status](http://codecov.io/github/thrasher-corp/gocryptotrader/coverage.svg?branch=master)](http://codecov.io/github/thrasher-corp/gocryptotrader?branch=master)
+[![Coverage Status](https://codecov.io/gh/thrasher-corp/gocryptotrader/graph/badge.svg?token=41784B23TS)](https://codecov.io/gh/thrasher-corp/gocryptotrader)
 [![Go Report Card](https://goreportcard.com/badge/github.com/thrasher-corp/gocryptotrader)](https://goreportcard.com/report/github.com/thrasher-corp/gocryptotrader)
 
 
@@ -14,7 +14,7 @@ This datahistory_manager package is part of the GoCryptoTrader codebase.
 
 ## This is still in active development
 
-You can track ideas, planned features and what's in progress on this Trello board: [https://trello.com/b/ZAhMhpOy/gocryptotrader](https://trello.com/b/ZAhMhpOy/gocryptotrader).
+You can track ideas, planned features and what's in progress on our [GoCryptoTrader Kanban board](https://github.com/orgs/thrasher-corp/projects/3).
 
 Join our slack to discuss all things related to GoCryptoTrader! [GoCryptoTrader Slack](https://join.slack.com/t/gocryptotrader/shared_invite/enQtNTQ5NDAxMjA2Mjc5LTc5ZDE1ZTNiOGM3ZGMyMmY1NTAxYWZhODE0MWM5N2JlZDk1NDU0YTViYzk4NTk3OTRiMDQzNGQ1YTc4YmRlMTk)
 
@@ -61,7 +61,7 @@ A breakdown of each type is under the Add Jobs command list below
 | Job Status | Description | Representative value |
 | ---------- | ----------- | -------------------- |
 | active | A job that is ready to processed | 0 |
-| failed | The job has failed to retrieve/covert/validate the data you have specified. See the associated data history job results to understand why | 1 |
+| failed | The job has failed to retrieve/convert/validate the data you have specified. See the associated data history job results to understand why | 1 |
 | complete | The job has successfully retrieved/converted/validated all data you have specified | 2 |
 | removed | The job has been deleted. No data is removed, but the job can no longer be processed | 3 |
 | missing data | The job is complete, however there is some missing data. See the associated data history job results to understand why | 4 |
@@ -173,7 +173,7 @@ The following is a screenshot of the relationship between relevant data history 
 | created | The date the job was created | `2020-01-01T13:33:37Z` |
 | conversion_interval | When converting data as a job, this determines the resulting interval | `86400000000000` |
 | overwrite_data | If data already exists, the setting allows you to overwrite it | `true` |
-| secondary_exchange_id | For a `secondaryvalidatecandles` job, the exchange id of the exchange to compare data to | `ftx` |
+| secondary_exchange_id | For a `secondaryvalidatecandles` job, the exchange id of the exchange to compare data to | `bybit` |
 | decimal_place_comparison | When validating API candles, this will round the data to the supplied decimal point to check for equality | `3` |
 | replace_on_issue | When there is an issue validating candles for a `validatecandles` job, the API data will overwrite the existing candle data | `false` |
 

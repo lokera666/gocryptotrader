@@ -5,14 +5,16 @@ import (
 	"html/template"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/shopspring/decimal"
 	"github.com/thrasher-corp/gocryptotrader/backtester/common"
+	"github.com/thrasher-corp/gocryptotrader/common/key"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/log"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // GenerateReport sends final data from statistics to a template
@@ -21,7 +23,7 @@ func (d *Data) GenerateReport() error {
 	if d.TemplatePath == "" || d.OutputPath == "" {
 		return nil
 	}
-	log.Info(common.Report, "Generating report")
+	log.Infoln(common.Report, "Generating report")
 	err := d.enhanceCandles()
 	if err != nil {
 		return err
@@ -95,7 +97,7 @@ func (d *Data) GenerateReport() error {
 	defer func() {
 		err = f.Close()
 		if err != nil {
-			log.Error(common.Report, err)
+			log.Errorln(common.Report, err)
 		}
 	}()
 
@@ -107,20 +109,23 @@ func (d *Data) GenerateReport() error {
 	return nil
 }
 
-// AddKlineItem appends a SET of candles for the report to enhance upon
-// generation
-func (d *Data) AddKlineItem(k *kline.Item) {
-	d.OriginalCandles = append(d.OriginalCandles, k)
-}
-
-// UpdateItem updates an existing kline item for LIVE data usage
-func (d *Data) UpdateItem(k *kline.Item) {
+// SetKlineData updates an existing kline item for LIVE data usage
+func (d *Data) SetKlineData(k *kline.Item) error {
 	if len(d.OriginalCandles) == 0 {
 		d.OriginalCandles = append(d.OriginalCandles, k)
-	} else {
-		d.OriginalCandles[0].Candles = append(d.OriginalCandles[0].Candles, k.Candles...)
-		d.OriginalCandles[0].RemoveDuplicates()
+		return nil
 	}
+	for i := range d.OriginalCandles {
+		err := d.OriginalCandles[i].EqualSource(k)
+		if err != nil {
+			continue
+		}
+		d.OriginalCandles[i].Candles = append(d.OriginalCandles[i].Candles, k.Candles...)
+		d.OriginalCandles[i].RemoveDuplicates()
+		return nil
+	}
+	d.OriginalCandles = append(d.OriginalCandles, k)
+	return nil
 }
 
 // enhanceCandles will enhance candle data with order information allowing
@@ -141,11 +146,15 @@ func (d *Data) enhanceCandles() error {
 			Asset:     lookup.Asset,
 			Pair:      lookup.Pair,
 			Interval:  lookup.Interval,
-			Watermark: fmt.Sprintf("%s - %s - %s", strings.Title(lookup.Exchange), lookup.Asset.String(), lookup.Pair.Upper()), //nolint // Title usage
+			Watermark: fmt.Sprintf("%s - %s - %s", cases.Title(language.English).String(lookup.Exchange), lookup.Asset.String(), lookup.Pair.Upper()),
 		}
 
-		statsForCandles :=
-			d.Statistics.ExchangeAssetPairStatistics[lookup.Exchange][lookup.Asset][lookup.Pair]
+		statsForCandles := d.Statistics.ExchangeAssetPairStatistics[key.ExchangePairAsset{
+			Exchange: lookup.Exchange,
+			Base:     lookup.Pair.Base.Item,
+			Quote:    lookup.Pair.Quote.Item,
+			Asset:    lookup.Asset,
+		}]
 		if statsForCandles == nil {
 			continue
 		}
@@ -217,11 +226,12 @@ func (d *Data) enhanceCandles() error {
 }
 
 func (d *DetailedCandle) copyCloseFromPreviousEvent(ek *EnhancedKline) {
+	cp := ek.Candles[len(ek.Candles)-1].Close
 	// if the data is missing, ensure that all values just continue the previous candle's close price visually
-	d.Open = ek.Candles[len(ek.Candles)-1].Close
-	d.High = ek.Candles[len(ek.Candles)-1].Close
-	d.Low = ek.Candles[len(ek.Candles)-1].Close
-	d.Close = ek.Candles[len(ek.Candles)-1].Close
+	d.Open = cp
+	d.High = cp
+	d.Low = cp
+	d.Close = cp
 	d.Colour = "white"
 	d.Position = "aboveBar"
 	d.Shape = "arrowDown"

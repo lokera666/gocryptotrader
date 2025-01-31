@@ -273,7 +273,7 @@ func ExchangeAccountInfo(args ...objects.Object) (objects.Object, error) {
 	for x := range rtnValue.Accounts {
 		for y := range rtnValue.Accounts[x].Currencies {
 			temp := make(map[string]objects.Object, 3)
-			temp["name"] = &objects.String{Value: rtnValue.Accounts[x].Currencies[y].CurrencyName.String()}
+			temp["name"] = &objects.String{Value: rtnValue.Accounts[x].Currencies[y].Currency.String()}
 			temp["total"] = &objects.Float{Value: rtnValue.Accounts[x].Currencies[y].Total}
 			temp["hold"] = &objects.Float{Value: rtnValue.Accounts[x].Currencies[y].Hold}
 			funds.Value = append(funds.Value, &objects.Map{Value: temp})
@@ -772,7 +772,7 @@ func exchangeOHLCV(args ...objects.Object) (objects.Object, error) {
 
 // parseInterval will parse the interval param of indictors that have them and convert to time.Duration
 func parseInterval(in string) (time.Duration, error) {
-	if !common.StringDataContainsInsensitive(supportedDurations, in) {
+	if !common.StringSliceContainsInsensitive(supportedDurations, in) {
 		return time.Nanosecond, errInvalidInterval
 	}
 	switch in {

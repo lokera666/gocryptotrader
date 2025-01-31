@@ -1,8 +1,11 @@
 package order
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -11,35 +14,51 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/protocol"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/validate"
+	"github.com/thrasher-corp/gocryptotrader/log"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 const (
 	orderSubmissionValidSides = Buy | Sell | Bid | Ask | Long | Short
 	shortSide                 = Short | Sell | Ask
 	longSide                  = Long | Buy | Bid
-	inactiveStatuses          = Filled | Cancelled | InsufficientBalance | MarketUnavailable | Rejected | PartiallyCancelled | Expired | Closed | AnyStatus | Cancelling | Liquidated
-	activeStatuses            = Active | Open | PartiallyFilled | New | PendingCancel | Hidden | AutoDeleverage | Pending
-	notPlaced                 = InsufficientBalance | MarketUnavailable | Rejected
+
+	inactiveStatuses = Filled | Cancelled | InsufficientBalance | MarketUnavailable | Rejected | PartiallyCancelled | PartiallyFilledCancelled | Expired | Closed | AnyStatus | Cancelling | Liquidated
+	activeStatuses   = Active | Open | PartiallyFilled | New | PendingCancel | Hidden | AutoDeleverage | Pending
+	notPlaced        = InsufficientBalance | MarketUnavailable | Rejected
+)
+
+// Public error vars for order package
+var (
+	ErrUnableToPlaceOrder          = errors.New("order not placed")
+	ErrOrderNotFound               = errors.New("order not found")
+	ErrUnknownPriceType            = errors.New("unknown price type")
+	ErrAmountMustBeSet             = errors.New("amount must be set")
+	ErrClientOrderIDMustBeSet      = errors.New("client order ID must be set")
+	ErrUnknownSubmissionAmountType = errors.New("unknown submission amount type")
 )
 
 var (
-	// ErrUnableToPlaceOrder defines an error when an order submission has
-	// failed.
-	ErrUnableToPlaceOrder = errors.New("order not placed")
-
 	errTimeInForceConflict      = errors.New("multiple time in force options applied")
-	errUnrecognisedOrderSide    = errors.New("unrecognised order side")
 	errUnrecognisedOrderType    = errors.New("unrecognised order type")
 	errUnrecognisedOrderStatus  = errors.New("unrecognised order status")
 	errExchangeNameUnset        = errors.New("exchange name unset")
 	errOrderSubmitIsNil         = errors.New("order submit is nil")
 	errOrderSubmitResponseIsNil = errors.New("order submit response is nil")
 	errOrderDetailIsNil         = errors.New("order detail is nil")
+	errAmountIsZero             = errors.New("amount is zero")
 )
 
-// Validate checks the supplied data and returns whether or not it's valid
-func (s *Submit) Validate(opt ...validate.Checker) error {
+// IsValidOrderSubmissionSide validates that the order side is a valid submission direction
+func IsValidOrderSubmissionSide(s Side) bool {
+	return s != UnknownSide && orderSubmissionValidSides&s == s
+}
+
+// Validate checks the supplied data and returns whether it's valid
+func (s *Submit) Validate(requirements protocol.TradingRequirements, opt ...validate.Checker) error {
 	if s == nil {
 		return ErrSubmissionIsNil
 	}
@@ -60,8 +79,8 @@ func (s *Submit) Validate(opt ...validate.Checker) error {
 		return fmt.Errorf("'%s' %w", s.AssetType, asset.ErrNotSupported)
 	}
 
-	if s.Side == UnknownSide || orderSubmissionValidSides&s.Side != s.Side {
-		return ErrSideIsInvalid
+	if !IsValidOrderSubmissionSide(s.Side) {
+		return fmt.Errorf("%w %v", ErrSideIsInvalid, s.Side)
 	}
 
 	if s.Type != Market && s.Type != Limit {
@@ -88,6 +107,18 @@ func (s *Submit) Validate(opt ...validate.Checker) error {
 		return ErrPriceMustBeSetIfLimitOrder
 	}
 
+	if requirements.ClientOrderID && s.ClientOrderID == "" {
+		return fmt.Errorf("submit validation error %w, client order ID must be set to satisfy submission requirements", ErrClientOrderIDMustBeSet)
+	}
+
+	if requirements.SpotMarketOrderAmountPurchaseQuotationOnly && s.QuoteAmount == 0 && s.Type == Market && s.AssetType == asset.Spot && s.Side.IsLong() {
+		return fmt.Errorf("submit validation error %w, quote amount to be sold must be set to 'QuoteAmount' field to satisfy trading requirements", ErrAmountMustBeSet)
+	}
+
+	if requirements.SpotMarketOrderAmountSellBaseOnly && s.Amount == 0 && s.Type == Market && s.AssetType == asset.Spot && s.Side.IsShort() {
+		return fmt.Errorf("submit validation error %w, base amount being sold must be set to 'Amount' field to satisfy trading requirements", ErrAmountMustBeSet)
+	}
+
 	for _, o := range opt {
 		err := o.Check()
 		if err != nil {
@@ -96,6 +127,23 @@ func (s *Submit) Validate(opt ...validate.Checker) error {
 	}
 
 	return nil
+}
+
+// GetTradeAmount returns the trade amount based on the exchange's trading
+// requirements. Some exchanges depending on direction and order type use
+// quotation (funds in balance) or base amounts. If the exchange does not have
+// any specific requirements it will return the base amount.
+func (s *Submit) GetTradeAmount(tr protocol.TradingRequirements) float64 {
+	if s == nil {
+		return 0
+	}
+	switch {
+	case tr.SpotMarketOrderAmountPurchaseQuotationOnly && s.AssetType == asset.Spot && s.Type == Market && s.Side.IsLong():
+		return s.QuoteAmount
+	case tr.SpotMarketOrderAmountSellBaseOnly && s.AssetType == asset.Spot && s.Type == Market && s.Side.IsShort():
+		return s.Amount
+	}
+	return s.Amount
 }
 
 // UpdateOrderFromDetail Will update an order detail (used in order management)
@@ -174,6 +222,10 @@ func (d *Detail) UpdateOrderFromDetail(m *Detail) error {
 	}
 	if m.ClientID != "" && m.ClientID != d.ClientID {
 		d.ClientID = m.ClientID
+		updated = true
+	}
+	if m.ClientOrderID != "" && m.ClientOrderID != d.ClientOrderID {
+		d.ClientOrderID = m.ClientOrderID
 		updated = true
 	}
 	if m.WalletAddress != "" && m.WalletAddress != d.WalletAddress {
@@ -460,12 +512,71 @@ func (s *Submit) DeriveSubmitResponse(orderID string) (*SubmitResponse, error) {
 		TriggerPrice:      s.TriggerPrice,
 		ClientID:          s.ClientID,
 		ClientOrderID:     s.ClientOrderID,
+		MarginType:        s.MarginType,
 
 		LastUpdated: time.Now(),
 		Date:        time.Now(),
 		Status:      status,
 		OrderID:     orderID,
 	}, nil
+}
+
+// AdjustBaseAmount will adjust the base amount of a submit response if the
+// exchange has modified the amount. This is usually due to decimal place
+// restrictions or rounding. This will return an error if the amount is zero
+// or the submit response is nil.
+func (s *SubmitResponse) AdjustBaseAmount(a float64) error {
+	if s == nil {
+		return errOrderSubmitResponseIsNil
+	}
+
+	if a <= 0 {
+		return errAmountIsZero
+	}
+
+	if s.Amount == a {
+		return nil
+	}
+
+	// Warning because amounts should conform to exchange requirements prior to
+	// call but this is not fatal.
+	log.Warnf(log.ExchangeSys, "Exchange %s: has adjusted OrderID: %s requested base amount from %v to %v",
+		s.Exchange,
+		s.OrderID,
+		s.Amount,
+		a)
+
+	s.Amount = a
+	return nil
+}
+
+// AdjustQuoteAmount will adjust the quote amount of a submit response if the
+// exchange has modified the amount. This is usually due to decimal place
+// restrictions or rounding. This will return an error if the amount is zero
+// or the submit response is nil.
+func (s *SubmitResponse) AdjustQuoteAmount(a float64) error {
+	if s == nil {
+		return errOrderSubmitResponseIsNil
+	}
+
+	if a <= 0 {
+		return errAmountIsZero
+	}
+
+	if s.QuoteAmount == a {
+		return nil
+	}
+
+	// Warning because amounts should conform to exchange requirements prior to
+	// call but this is not fatal.
+	log.Warnf(log.ExchangeSys, "Exchange %s: has adjusted OrderID: %s requested quote amount from %v to %v",
+		s.Exchange,
+		s.OrderID,
+		s.Amount,
+		a)
+
+	s.QuoteAmount = a
+	return nil
 }
 
 // DeriveDetail will construct an order detail when a successful submission
@@ -592,6 +703,8 @@ func (t Type) String() string {
 		return "IMMEDIATE_OR_CANCEL"
 	case Stop:
 		return "STOP"
+	case ConditionalStop:
+		return "CONDITIONAL"
 	case StopLimit:
 		return "STOP LIMIT"
 	case StopMarket:
@@ -610,6 +723,10 @@ func (t Type) String() string {
 		return "LIQUIDATION"
 	case Trigger:
 		return "TRIGGER"
+	case OptimalLimitIOC:
+		return "OPTIMAL_LIMIT_IOC"
+	case OCO:
+		return "OCO"
 	default:
 		return "UNKNOWN"
 	}
@@ -622,7 +739,7 @@ func (t Type) Lower() string {
 
 // Title returns the type titleized, eg "Limit"
 func (t Type) Title() string {
-	return strings.Title(strings.ToLower(t.String())) //nolint:staticcheck // Ignore Title usage warning
+	return cases.Title(language.English).String(t.String())
 }
 
 // String implements the stringer interface
@@ -675,7 +792,7 @@ func (s Side) Lower() string {
 
 // Title returns the side titleized, eg "Buy"
 func (s Side) Title() string {
-	return strings.Title(strings.ToLower(s.String())) //nolint:staticcheck // Ignore Title usage warning
+	return cases.Title(language.English).String(s.String())
 }
 
 // IsShort returns if the side is short
@@ -701,6 +818,8 @@ func (s Status) String() string {
 		return "PARTIALLY_CANCELLED"
 	case PartiallyFilled:
 		return "PARTIALLY_FILLED"
+	case PartiallyFilledCancelled:
+		return "PARTIALLY_FILLED_CANCELED"
 	case Filled:
 		return "FILLED"
 	case Cancelled:
@@ -727,6 +846,10 @@ func (s Status) String() string {
 		return "PENDING"
 	case Cancelling:
 		return "CANCELLING"
+	case Liquidated:
+		return "LIQUIDATED"
+	case STP:
+		return "SELF_TRADE_PREVENTION"
 	default:
 		return "UNKNOWN"
 	}
@@ -772,7 +895,7 @@ func FilterOrdersBySide(orders *[]Detail, side Side) {
 
 	target := 0
 	for i := range *orders {
-		if (*orders)[i].Side == side {
+		if (*orders)[i].Side == UnknownSide || (*orders)[i].Side == side {
 			(*orders)[target] = (*orders)[i]
 			target++
 		}
@@ -789,7 +912,7 @@ func FilterOrdersByType(orders *[]Detail, orderType Type) {
 
 	target := 0
 	for i := range *orders {
-		if (*orders)[i].Type == orderType {
+		if (*orders)[i].Type == UnknownType || (*orders)[i].Type == orderType {
 			(*orders)[target] = (*orders)[i]
 			target++
 		}
@@ -834,6 +957,12 @@ func FilterOrdersByPairs(orders *[]Detail, pairs []currency.Pair) {
 
 	target := 0
 	for x := range *orders {
+		if (*orders)[x].Pair.IsEmpty() { // If pair not set then keep
+			(*orders)[target] = (*orders)[x]
+			target++
+			continue
+		}
+
 		for y := range pairs {
 			if (*orders)[x].Pair.EqualIncludeReciprocal(pairs[y]) {
 				(*orders)[target] = (*orders)[x]
@@ -970,8 +1099,25 @@ func StringToOrderSide(side string) (Side, error) {
 	case AnySide.String():
 		return AnySide, nil
 	default:
-		return UnknownSide, fmt.Errorf("'%s' %w", side, errUnrecognisedOrderSide)
+		return UnknownSide, fmt.Errorf("'%s' %w", side, ErrSideIsInvalid)
 	}
+}
+
+// UnmarshalJSON parses the JSON-encoded order side and stores the result
+// It expects a quoted string input, and uses StringToOrderSide to parse it
+func (s *Side) UnmarshalJSON(data []byte) (err error) {
+	if !bytes.HasPrefix(data, []byte(`"`)) {
+		// Note that we don't need to worry about invalid JSON here, it wouldn't have made it past the deserialiser far
+		// TODO: Can use reflect.TypeFor[s]() when it's released, probably 1.21
+		return &json.UnmarshalTypeError{Value: string(data), Type: reflect.TypeOf(s), Offset: 1}
+	}
+	*s, err = StringToOrderSide(string(data[1 : len(data)-1])) // Remove quotes
+	return
+}
+
+// MarshalJSON returns the JSON-encoded order side
+func (s Side) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + s.String() + `"`), nil
 }
 
 // StringToOrderType for converting case insensitive order type
@@ -987,8 +1133,10 @@ func StringToOrderType(oType string) (Type, error) {
 		return ImmediateOrCancel, nil
 	case Stop.String(), "STOP LOSS", "STOP_LOSS", "EXCHANGE STOP":
 		return Stop, nil
-	case StopLimit.String(), "EXCHANGE STOP LIMIT":
+	case StopLimit.String(), "EXCHANGE STOP LIMIT", "STOP_LIMIT":
 		return StopLimit, nil
+	case StopMarket.String(), "STOP_MARKET":
+		return StopMarket, nil
 	case TrailingStop.String(), "TRAILING STOP", "EXCHANGE TRAILING STOP":
 		return TrailingStop, nil
 	case FillOrKill.String(), "EXCHANGE FOK":
@@ -1001,6 +1149,12 @@ func StringToOrderType(oType string) (Type, error) {
 		return AnyType, nil
 	case Trigger.String():
 		return Trigger, nil
+	case OptimalLimitIOC.String():
+		return OptimalLimitIOC, nil
+	case OCO.String():
+		return OCO, nil
+	case ConditionalStop.String():
+		return ConditionalStop, nil
 	default:
 		return UnknownType, fmt.Errorf("'%v' %w", oType, errUnrecognisedOrderType)
 	}
@@ -1015,23 +1169,27 @@ func StringToOrderStatus(status string) (Status, error) {
 		return AnyStatus, nil
 	case New.String(), "PLACED", "ACCEPTED":
 		return New, nil
-	case Active.String(), "STATUS_ACTIVE":
+	case Active.String(), "STATUS_ACTIVE", "LIVE":
 		return Active, nil
 	case PartiallyFilled.String(), "PARTIALLY MATCHED", "PARTIALLY FILLED":
 		return PartiallyFilled, nil
-	case Filled.String(), "FULLY MATCHED", "FULLY FILLED", "ORDER_FULLY_TRANSACTED":
+	case Filled.String(), "FULLY MATCHED", "FULLY FILLED", "ORDER_FULLY_TRANSACTED", "EFFECTIVE":
 		return Filled, nil
 	case PartiallyCancelled.String(), "PARTIALLY CANCELLED", "ORDER_PARTIALLY_TRANSACTED":
 		return PartiallyCancelled, nil
+	case PartiallyFilledCancelled.String(), "PARTIALLYFILLEDCANCELED":
+		return PartiallyFilledCancelled, nil
 	case Open.String():
 		return Open, nil
-	case Closed.String():
+	case Closed.String(), "POSITION_CLOSED":
 		return Closed, nil
 	case Cancelled.String(), "CANCELED", "ORDER_CANCELLED":
 		return Cancelled, nil
+	case Pending.String():
+		return Pending, nil
 	case PendingCancel.String(), "PENDING CANCEL", "PENDING CANCELLATION":
 		return PendingCancel, nil
-	case Rejected.String(), "FAILED":
+	case Rejected.String(), "FAILED", "ORDER_FAILED":
 		return Rejected, nil
 	case Expired.String():
 		return Expired, nil
@@ -1043,6 +1201,12 @@ func StringToOrderStatus(status string) (Status, error) {
 		return MarketUnavailable, nil
 	case Cancelling.String():
 		return Cancelling, nil
+	case Liquidated.String():
+		return Liquidated, nil
+	case AutoDeleverage.String(), "AUTO_DELEVERAGED":
+		return AutoDeleverage, nil
+	case STP.String(), "STP":
+		return STP, nil
 	default:
 		return UnknownStatus, fmt.Errorf("'%s' %w", status, errUnrecognisedOrderStatus)
 	}
@@ -1050,12 +1214,12 @@ func StringToOrderStatus(status string) (Status, error) {
 
 func (o *ClassificationError) Error() string {
 	if o.OrderID != "" {
-		return fmt.Sprintf("%s - OrderID: %s classification error: %v",
+		return fmt.Sprintf("Exchange %s: OrderID: %s classification error: %v",
 			o.Exchange,
 			o.OrderID,
 			o.Err)
 	}
-	return fmt.Sprintf("%s - classification error: %v",
+	return fmt.Sprintf("Exchange %s: classification error: %v",
 		o.Exchange,
 		o.Err)
 }
@@ -1092,40 +1256,57 @@ func (c *Cancel) Validate(opt ...validate.Checker) error {
 		return ErrCancelOrderIsNil
 	}
 
-	var errs common.Errors
+	var errs error
 	for _, o := range opt {
 		err := o.Check()
 		if err != nil {
-			errs = append(errs, err)
+			errs = common.AppendError(errs, err)
 		}
 	}
-
-	if errs != nil {
-		return errs
-	}
-	return nil
+	return errs
 }
 
-// Validate checks internal struct requirements
-func (g *GetOrdersRequest) Validate(opt ...validate.Checker) error {
+// Validate checks internal struct requirements and returns filter requirement
+// options for wrapper standardization procedures.
+func (g *MultiOrderRequest) Validate(opt ...validate.Checker) error {
 	if g == nil {
 		return ErrGetOrdersRequestIsNil
 	}
+
 	if !g.AssetType.IsValid() {
 		return fmt.Errorf("%v %w", g.AssetType, asset.ErrNotSupported)
 	}
-	var errs common.Errors
+
+	if g.Side == UnknownSide {
+		return ErrSideIsInvalid
+	}
+
+	if g.Type == UnknownType {
+		return errUnrecognisedOrderType
+	}
+
+	var errs error
 	for _, o := range opt {
 		err := o.Check()
 		if err != nil {
-			errs = append(errs, err)
+			errs = common.AppendError(errs, err)
 		}
 	}
+	return errs
+}
 
-	if errs != nil {
-		return errs
+// Filter reduces slice by optional fields
+func (g *MultiOrderRequest) Filter(exch string, orders []Detail) FilteredOrders {
+	filtered := make([]Detail, len(orders))
+	copy(filtered, orders)
+	FilterOrdersByPairs(&filtered, g.Pairs)
+	FilterOrdersByType(&filtered, g.Type)
+	FilterOrdersBySide(&filtered, g.Side)
+	err := FilterOrdersByTimeRange(&filtered, g.StartTime, g.EndTime)
+	if err != nil {
+		log.Errorf(log.ExchangeSys, "%s %v", exch, err)
 	}
-	return nil
+	return filtered
 }
 
 // Validate checks internal struct requirements
@@ -1142,14 +1323,13 @@ func (m *Modify) Validate(opt ...validate.Checker) error {
 		return ErrAssetNotSet
 	}
 
-	var errs common.Errors
+	var errs error
 	for _, o := range opt {
 		err := o.Check()
 		if err != nil {
-			errs = append(errs, err)
+			errs = common.AppendError(errs, err)
 		}
 	}
-
 	if errs != nil {
 		return errs
 	}
@@ -1157,4 +1337,34 @@ func (m *Modify) Validate(opt ...validate.Checker) error {
 		return ErrOrderIDNotSet
 	}
 	return nil
+}
+
+// String implements the stringer interface
+func (t PriceType) String() string {
+	switch t {
+	case LastPrice:
+		return "LastPrice"
+	case IndexPrice:
+		return "IndexPrice"
+	case MarkPrice:
+		return "MarkPrice"
+	default:
+		return ""
+	}
+}
+
+// StringToPriceType for converting case insensitive order side
+// and returning a real Side
+func (t PriceType) StringToPriceType(priceType string) (PriceType, error) {
+	priceType = strings.ToLower(priceType)
+	switch priceType {
+	case "lastprice", "":
+		return LastPrice, nil
+	case "indexprice":
+		return IndexPrice, nil
+	case "markprice":
+		return MarkPrice, nil
+	default:
+		return UnknownPriceType, ErrUnknownPriceType
+	}
 }

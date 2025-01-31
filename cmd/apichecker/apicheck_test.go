@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/thrasher-corp/gocryptotrader/common/convert"
 	gctfile "github.com/thrasher-corp/gocryptotrader/common/file"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/log"
@@ -25,22 +24,20 @@ var (
 
 func TestMain(m *testing.M) {
 	setTestVars()
-	testMode = true
-	c := log.GenDefaultSettings()
-	c.Enabled = convert.BoolPtr(true)
-	log.RWM.Lock()
-	log.GlobalLogConfig = c
-	log.RWM.Unlock()
+	err := log.SetGlobalLogConfig(log.GenDefaultSettings())
+	if err != nil {
+		log.Errorln(log.Global, err)
+		os.Exit(1)
+	}
 	log.Infoln(log.Global, "set verbose to true for more detailed output")
-	var err error
 	configData, err = readFileData(jsonFile)
 	if err != nil {
-		log.Error(log.Global, err)
+		log.Errorln(log.Global, err)
 		os.Exit(1)
 	}
 	testConfigData, err = readFileData(testJSONFile)
 	if err != nil {
-		log.Error(log.Global, err)
+		log.Errorln(log.Global, err)
 		os.Exit(1)
 	}
 	usageData = testConfigData
@@ -48,7 +45,7 @@ func TestMain(m *testing.M) {
 	testExitCode := m.Run()
 	err = removeTestFileVars()
 	if err != nil {
-		log.Error(log.Global, err)
+		log.Errorln(log.Global, err)
 		os.Exit(1)
 	}
 	os.Exit(testExitCode)
@@ -98,7 +95,7 @@ func canTestTrello() bool {
 
 func TestCheckUpdates(t *testing.T) {
 	if !canUpdateTrello() || !canTestTrello() {
-		t.Skip()
+		t.Skip("cannot update or test trello, skipping")
 	}
 	err := checkUpdates(testJSONFile)
 	if err != nil {
@@ -249,23 +246,6 @@ func TestHTMLScrapeHitBTC(t *testing.T) {
 	}
 }
 
-func TestHTMLScrapeDefault(t *testing.T) {
-	t.Parallel()
-	data := HTMLScrapingData{TokenData: "h3",
-		Key:           "id",
-		Val:           "change-change",
-		TokenDataEnd:  "section",
-		TextTokenData: "p",
-		DateFormat:    "2006-01-02",
-		RegExp:        "(2\\d{3}-\\d{1,2}-\\d{1,2})",
-		CheckString:   "2019-04-28",
-		Path:          "https://www.okcoin.com/docs/en/#change-change"}
-	_, err := htmlScrapeDefault(&data)
-	if err != nil {
-		t.Error(err)
-	}
-}
-
 func TestHTMLScrapeBTSE(t *testing.T) {
 	t.Parallel()
 	data := HTMLScrapingData{RegExp: `^version: \d{1}.\d{1}.\d{1}`,
@@ -316,21 +296,6 @@ func TestHTMLPoloniex(t *testing.T) {
 		RegExp:        `(2\d{3}-\d{1,2}-\d{1,2})`,
 		Path:          "https://docs.poloniex.com/#changelog"}
 	if _, err := htmlScrapePoloniex(&data); err != nil {
-		t.Error(err)
-	}
-}
-
-func TestHTMLItBit(t *testing.T) {
-	t.Parallel()
-	data := HTMLScrapingData{TokenData: "a",
-		Key:           "href",
-		Val:           "changelog",
-		TokenDataEnd:  "div",
-		TextTokenData: "h2",
-		DateFormat:    "2006-01-02",
-		RegExp:        `^https://api.itbit.com/v\d{1}/$`,
-		Path:          "https://api.itbit.com/docs"}
-	if _, err := htmlScrapeItBit(&data); err != nil {
 		t.Error(err)
 	}
 }
@@ -389,16 +354,6 @@ func TestHTMLYobit(t *testing.T) {
 	}
 }
 
-func TestHTMLScrapeLocalBitcoins(t *testing.T) {
-	t.Parallel()
-	data := HTMLScrapingData{TokenData: "div",
-		RegExp: `col-md-12([\s\S]*?)clearfix`,
-		Path:   "https://localbitcoins.com/api-docs/"}
-	if _, err := htmlScrapeLocalBitcoins(&data); err != nil {
-		t.Error(err)
-	}
-}
-
 func TestHTMLScrapeOk(t *testing.T) {
 	t.Parallel()
 	data := HTMLScrapingData{TokenData: "a",
@@ -406,7 +361,7 @@ func TestHTMLScrapeOk(t *testing.T) {
 		Val:          "./#change-change",
 		TokenDataEnd: "./#change-",
 		RegExp:       `./#change-\d{8}`,
-		Path:         "https://www.okex.com/docs/en/"}
+		Path:         "https://www.okx.com/docs/en/"}
 	if _, err := htmlScrapeOk(&data); err != nil {
 		t.Error(err)
 	}
@@ -515,7 +470,7 @@ func TestGetSha(t *testing.T) {
 
 func TestCheckBoardID(t *testing.T) {
 	if !areTestAPIKeysSet() {
-		t.Skip()
+		t.Skip("API Keys unset, skipping")
 	}
 	a, err := trelloCheckBoardID()
 	if err != nil {
@@ -528,7 +483,7 @@ func TestCheckBoardID(t *testing.T) {
 
 func TestTrelloGetLists(t *testing.T) {
 	if !areTestAPIKeysSet() {
-		t.Skip()
+		t.Skip("API Keys unset, skipping")
 	}
 	if _, err := trelloGetLists(); err != nil {
 		t.Error(err)
@@ -537,7 +492,7 @@ func TestTrelloGetLists(t *testing.T) {
 
 func TestGetAllCards(t *testing.T) {
 	if !areTestAPIKeysSet() {
-		t.Skip()
+		t.Skip("API Keys unset, skipping")
 	}
 	if _, err := trelloGetAllCards(); err != nil {
 		t.Error(err)
@@ -546,7 +501,7 @@ func TestGetAllCards(t *testing.T) {
 
 func TestGetAllChecklists(t *testing.T) {
 	if !areTestAPIKeysSet() {
-		t.Skip()
+		t.Skip("API Keys unset, skipping")
 	}
 	if _, err := trelloGetAllChecklists(); err != nil {
 		t.Error(err)
@@ -555,10 +510,10 @@ func TestGetAllChecklists(t *testing.T) {
 
 func TestTrelloGetAllBoards(t *testing.T) {
 	if !areTestAPIKeysSet() {
-		t.Skip()
+		t.Skip("API Keys unset, skipping")
 	}
 	if trelloBoardID != "" || testBoardName != "" {
-		t.Skip()
+		t.Skip("trello details empty, skipping")
 	}
 	if _, err := trelloGetBoardID(); err != nil {
 		t.Error(err)
@@ -567,7 +522,7 @@ func TestTrelloGetAllBoards(t *testing.T) {
 
 func TestCreateNewList(t *testing.T) {
 	if !areTestAPIKeysSet() {
-		t.Skip()
+		t.Skip("API Keys unset, skipping")
 	}
 	if err := trelloCreateNewList(); err != nil {
 		t.Error(err)
@@ -576,7 +531,7 @@ func TestCreateNewList(t *testing.T) {
 
 func TestTrelloCreateNewCard(t *testing.T) {
 	if !areTestAPIKeysSet() {
-		t.Skip()
+		t.Skip("API Keys unset, skipping")
 	}
 	if err := trelloCreateNewCard(); err != nil {
 		t.Error(err)
@@ -585,7 +540,7 @@ func TestTrelloCreateNewCard(t *testing.T) {
 
 func TestCreateNewChecklist(t *testing.T) {
 	if !areTestAPIKeysSet() {
-		t.Skip()
+		t.Skip("API Keys unset, skipping")
 	}
 	if err := trelloCreateNewChecklist(); err != nil {
 		t.Error(err)
@@ -603,7 +558,7 @@ func TestWriteAuthVars(t *testing.T) {
 
 func TestCreateNewCheck(t *testing.T) {
 	if !canTestTrello() {
-		t.Skip()
+		t.Skip("cannot test trello, skipping")
 	}
 	err := trelloCreateNewCheck("Gemini")
 	if err != nil {
@@ -613,7 +568,7 @@ func TestCreateNewCheck(t *testing.T) {
 
 func TestUpdateCheckItem(t *testing.T) {
 	if !canTestTrello() {
-		t.Skip()
+		t.Skip("cannot test trello, skipping")
 	}
 	a, err := trelloGetChecklistItems()
 	if err != nil {
@@ -633,7 +588,7 @@ func TestUpdateCheckItem(t *testing.T) {
 
 func TestGetChecklistItems(t *testing.T) {
 	if !canTestTrello() {
-		t.Skip()
+		t.Skip("cannot test trello, skipping")
 	}
 	_, err := trelloGetChecklistItems()
 	if err != nil {
@@ -655,23 +610,10 @@ func TestSetAuthVars(t *testing.T) {
 
 func TestTrelloDeleteCheckItems(t *testing.T) {
 	if !areTestAPIKeysSet() {
-		t.Skip()
+		t.Skip("API Keys unset, skipping")
 	}
 	err := trelloDeleteCheckItem("")
 	if err != nil {
-		t.Error(err)
-	}
-}
-
-func TestHTMLScrapeFTX(t *testing.T) {
-	data := HTMLScrapingData{
-		TokenData:    "span",
-		Key:          "class",
-		Val:          "css-truncate css-truncate-target d-block width-fit",
-		TokenDataEnd: "svg",
-		Path:         "https://github.com/ftexchange/ftx"}
-	a, err := htmlScrapeFTX(&data)
-	if err != nil || len(a) != 1 {
 		t.Error(err)
 	}
 }

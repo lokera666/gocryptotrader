@@ -2,10 +2,17 @@ package currency
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"unicode"
 )
 
 // EMPTYFORMAT defines an empty pair format
 var EMPTYFORMAT = PairFormat{}
+
+// ErrCurrencyNotAssociatedWithPair defines an error where a currency is not
+// associated with a pair.
+var ErrCurrencyNotAssociatedWithPair = errors.New("currency not associated with pair")
 
 // String returns a currency pair string
 func (p Pair) String() string {
@@ -26,7 +33,7 @@ func (p Pair) Upper() Pair {
 	return p
 }
 
-// UnmarshalJSON comforms type to the umarshaler interface
+// UnmarshalJSON implements json.Unmarshaler
 func (p *Pair) UnmarshalJSON(d []byte) error {
 	var pair string
 	err := json.Unmarshal(d, &pair)
@@ -39,13 +46,21 @@ func (p *Pair) UnmarshalJSON(d []byte) error {
 		return nil
 	}
 
-	newPair, err := NewPairFromString(pair)
-	if err != nil {
-		return err
+	// Check if pair is in the format of BTC-USD
+	for x := range pair {
+		if unicode.IsPunct(rune(pair[x])) {
+			p.Base = NewCode(pair[:x])
+			p.Delimiter = string(pair[x])
+			p.Quote = NewCode(pair[x+1:])
+			return nil
+		}
 	}
 
-	*p = newPair
-	return nil
+	// NOTE: Pair string could be in format DUSKUSDT (Kucoin) which will be
+	// incorrectly converted to DUS-KUSDT, ELKRW (Bithumb) which will convert
+	// converted to ELK-RW and HTUSDT (Lbank) which will be incorrectly
+	// converted to HTU-SDT.
+	return fmt.Errorf("%w from %s cannot ensure pair is in correct format, please use exchange method MatchSymbolWithAvailablePairs", errCannotCreatePair, pair)
 }
 
 // MarshalJSON conforms type to the marshaler interface
@@ -138,4 +153,88 @@ func (p Pair) Other(c Code) (Code, error) {
 		return p.Base, nil
 	}
 	return EMPTYCODE, ErrCurrencyCodeEmpty
+}
+
+// IsPopulated returns true if the currency pair have both non-empty values for
+// base and quote.
+func (p Pair) IsPopulated() bool {
+	return !p.Base.IsEmpty() && !p.Quote.IsEmpty()
+}
+
+// MarketSellOrderParameters returns order parameters for when you want to sell
+// a currency which purchases another currency. This specifically returns what
+// liquidity side you will be affecting, what order side you will be placing and
+// what currency you will be purchasing.
+func (p Pair) MarketSellOrderParameters(wantingToSell Code) (*OrderParameters, error) {
+	return p.getOrderParameters(wantingToSell, true, true)
+}
+
+// MarketBuyOrderParameters returns order parameters for when you want to sell a
+// currency which purchases another currency. This specifically returns what
+// liquidity side you will be affecting, what order side you will be placing and
+// what currency you will be purchasing.
+func (p Pair) MarketBuyOrderParameters(wantingToBuy Code) (*OrderParameters, error) {
+	return p.getOrderParameters(wantingToBuy, false, true)
+}
+
+// LimitSellOrderParameters returns order parameters for when you want to sell a
+// currency which purchases another currency. This specifically returns what
+// liquidity side you will be affecting, what order side you will be placing and
+// what currency you will be purchasing.
+func (p Pair) LimitSellOrderParameters(wantingToSell Code) (*OrderParameters, error) {
+	return p.getOrderParameters(wantingToSell, true, false)
+}
+
+// LimitBuyOrderParameters returns order parameters for when you want to
+// sell a currency which purchases another currency. This specifically returns
+// what liquidity side you will be affecting, what order side you will be
+// placing and what currency you will be purchasing.
+func (p Pair) LimitBuyOrderParameters(wantingToBuy Code) (*OrderParameters, error) {
+	return p.getOrderParameters(wantingToBuy, false, false)
+}
+
+// getOrderDecisionDetails returns order parameters for the currency pair using
+// the provided currency code, whether or not you are selling and whether or not
+// you are placing a market order.
+func (p Pair) getOrderParameters(c Code, selling, market bool) (*OrderParameters, error) {
+	if !p.IsPopulated() {
+		return nil, ErrCurrencyPairEmpty
+	}
+	if c.IsEmpty() {
+		return nil, ErrCurrencyCodeEmpty
+	}
+	params := OrderParameters{}
+	switch {
+	case p.Base.Equal(c):
+		if selling {
+			params.SellingCurrency = p.Base
+			params.PurchasingCurrency = p.Quote
+			params.IsAskLiquidity = !market
+		} else {
+			params.SellingCurrency = p.Quote
+			params.PurchasingCurrency = p.Base
+			params.IsBuySide = true
+			params.IsAskLiquidity = market
+		}
+	case p.Quote.Equal(c):
+		if selling {
+			params.SellingCurrency = p.Quote
+			params.PurchasingCurrency = p.Base
+			params.IsBuySide = true
+			params.IsAskLiquidity = market
+		} else {
+			params.SellingCurrency = p.Base
+			params.PurchasingCurrency = p.Quote
+			params.IsAskLiquidity = !market
+		}
+	default:
+		return nil, fmt.Errorf("%w %v: %v", ErrCurrencyNotAssociatedWithPair, c, p)
+	}
+	params.Pair = p
+	return &params, nil
+}
+
+// IsAssociated checks to see if the pair is associated with another pair
+func (p Pair) IsAssociated(a Pair) bool {
+	return p.Base.Equal(a.Base) || p.Quote.Equal(a.Base) || p.Base.Equal(a.Quote) || p.Quote.Equal(a.Quote)
 }

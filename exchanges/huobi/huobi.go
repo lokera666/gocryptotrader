@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
@@ -21,56 +22,66 @@ import (
 )
 
 const (
-	huobiAPIURL      = "https://api.huobi.pro"
-	huobiURL         = "https://api.hbdm.com"
-	huobiFuturesURL  = huobiURL
-	huobiAPIVersion  = "1"
-	huobiAPIVersion2 = "2"
+	huobiAPIURL       = "https://api.huobi.pro"
+	huobiURL          = "https://api.hbdm.com"
+	huobiFuturesURL   = huobiURL
+	huobiAPIVersion   = "1"
+	huobiAPIVersion2  = "2"
+	tradeBaseURL      = "https://www.htx.com/"
+	tradeSpot         = "trade/"
+	tradeFutures      = "futures/linear_swap/exchange#contract_code="
+	tradeCoinMargined = "futures/swap/exchange/#symbol="
 
 	// Spot endpoints
-	huobiMarketHistoryKline          = "/market/history/kline"
-	huobiMarketDetail                = "/market/detail"
-	huobiMarketDetailMerged          = "/market/detail/merged"
-	huobi24HrMarketSummary           = "/market/detail?"
-	huobiMarketDepth                 = "/market/depth"
-	huobiMarketTrade                 = "/market/trade"
-	huobiMarketTickers               = "/market/tickers"
-	huobiMarketTradeHistory          = "/market/history/trade"
-	huobiSymbols                     = "/v1/common/symbols"
-	huobiCurrencies                  = "/v1/common/currencys"
-	huobiTimestamp                   = "/common/timestamp"
-	huobiAccounts                    = "/account/accounts"
-	huobiAccountBalance              = "/account/accounts/%s/balance"
-	huobiAccountDepositAddress       = "/account/deposit/address"
-	huobiAccountWithdrawQuota        = "/account/withdraw/quota"
-	huobiAccountQueryWithdrawAddress = "/account/withdraw/"
-	huobiAggregatedBalance           = "/subuser/aggregate-balance"
-	huobiOrderPlace                  = "/order/orders/place"
-	huobiOrderCancel                 = "/order/orders/%s/submitcancel"
-	huobiOrderCancelBatch            = "/order/orders/batchcancel"
-	huobiBatchCancelOpenOrders       = "/order/orders/batchCancelOpenOrders"
-	huobiGetOrder                    = "/order/orders/getClientOrder"
-	huobiGetOrderMatch               = "/order/orders/%s/matchresults"
-	huobiGetOrders                   = "/order/orders"
-	huobiGetOpenOrders               = "/order/openOrders"
-	huobiGetOrdersMatch              = "/orders/matchresults"
-	huobiMarginTransferIn            = "/dw/transfer-in/margin"
-	huobiMarginTransferOut           = "/dw/transfer-out/margin"
-	huobiMarginOrders                = "/margin/orders"
-	huobiMarginRepay                 = "/margin/orders/%s/repay"
-	huobiMarginLoanOrders            = "/margin/loan-orders"
-	huobiMarginAccountBalance        = "/margin/accounts/balance"
-	huobiWithdrawCreate              = "/dw/withdraw/api/create"
-	huobiWithdrawCancel              = "/dw/withdraw-virtual/%s/cancel"
-	huobiStatusError                 = "error"
-	huobiMarginRates                 = "/margin/loan-info"
-	huobiCurrenciesReference         = "/v2/reference/currencies"
+	huobiMarketHistoryKline           = "/market/history/kline"
+	huobiMarketDetail                 = "/market/detail"
+	huobiMarketDetailMerged           = "/market/detail/merged"
+	huobi24HrMarketSummary            = "/market/detail?"
+	huobiMarketDepth                  = "/market/depth"
+	huobiMarketTrade                  = "/market/trade"
+	huobiMarketTickers                = "/market/tickers"
+	huobiMarketTradeHistory           = "/market/history/trade"
+	huobiSymbols                      = "/v1/common/symbols"
+	huobiCurrencies                   = "/v1/common/currencys"
+	huobiTimestamp                    = "/common/timestamp"
+	huobiAccounts                     = "/account/accounts"
+	huobiAccountBalance               = "/account/accounts/%s/balance"
+	huobiAccountDepositAddress        = "/account/deposit/address"
+	huobiAccountWithdrawQuota         = "/account/withdraw/quota"
+	huobiAccountQueryWithdrawAddress  = "/account/withdraw/"
+	huobiAggregatedBalance            = "/subuser/aggregate-balance"
+	huobiOrderPlace                   = "/order/orders/place"
+	huobiOrderCancel                  = "/order/orders/%s/submitcancel"
+	huobiOrderCancelBatch             = "/order/orders/batchcancel"
+	huobiBatchCancelOpenOrders        = "/order/orders/batchCancelOpenOrders"
+	huobiGetOrder                     = "/order/orders/getClientOrder"
+	huobiGetOrderMatch                = "/order/orders/%s/matchresults"
+	huobiGetOrders                    = "/order/orders"
+	huobiGetOpenOrders                = "/order/openOrders"
+	huobiGetOrdersMatch               = "/orders/matchresults"
+	huobiMarginTransferIn             = "/dw/transfer-in/margin"
+	huobiMarginTransferOut            = "/dw/transfer-out/margin"
+	huobiMarginOrders                 = "/margin/orders"
+	huobiMarginRepay                  = "/margin/orders/%s/repay"
+	huobiMarginLoanOrders             = "/margin/loan-orders"
+	huobiMarginAccountBalance         = "/margin/accounts/balance"
+	huobiWithdrawCreate               = "/dw/withdraw/api/create"
+	huobiWithdrawCancel               = "/dw/withdraw-virtual/%s/cancel"
+	huobiStatusError                  = "error"
+	huobiMarginRates                  = "/margin/loan-info"
+	huobiCurrenciesReference          = "/v2/reference/currencies"
+	huobiWithdrawHistory              = "/query/deposit-withdraw"
+	huobiBatchCoinMarginSwapContracts = "/v2/swap-ex/market/detail/batch_merged"
+	huobiBatchLinearSwapContracts     = "/v2/linear-swap-ex/market/detail/batch_merged"
+	huobiBatchContracts               = "/v2/market/detail/batch_merged"
 )
 
 // HUOBI is the overarching type across this package
 type HUOBI struct {
 	exchange.Base
-	AccountID string
+	AccountID                string
+	futureContractCodesMutex sync.RWMutex
+	futureContractCodes      map[string]currency.Code
 }
 
 // GetMarginRates gets margin rates
@@ -89,7 +100,7 @@ func (h *HUOBI) GetMarginRates(ctx context.Context, symbol currency.Pair) (Margi
 
 // GetSpotKline returns kline data
 // KlinesRequestParams contains symbol currency.Pair, period and size
-func (h *HUOBI) GetSpotKline(ctx context.Context, arg *KlinesRequestParams) ([]KlineItem, error) {
+func (h *HUOBI) GetSpotKline(ctx context.Context, arg KlinesRequestParams) ([]KlineItem, error) {
 	vals := url.Values{}
 	symbolValue, err := h.FormatSymbol(arg.Symbol, asset.Spot)
 	if err != nil {
@@ -126,6 +137,33 @@ func (h *HUOBI) Get24HrMarketSummary(ctx context.Context, symbol currency.Pair) 
 	}
 	params.Set("symbol", symbolValue)
 	return result, h.SendHTTPRequest(ctx, exchange.RestSpot, huobi24HrMarketSummary+params.Encode(), &result)
+}
+
+// GetBatchCoinMarginSwapContracts returns the tickers for coin margined swap contracts
+func (h *HUOBI) GetBatchCoinMarginSwapContracts(ctx context.Context) ([]FuturesBatchTicker, error) {
+	var result struct {
+		Data []FuturesBatchTicker `json:"ticks"`
+	}
+	err := h.SendHTTPRequest(ctx, exchange.RestFutures, huobiBatchCoinMarginSwapContracts, &result)
+	return result.Data, err
+}
+
+// GetBatchLinearSwapContracts  returns the tickers for linear swap contracts
+func (h *HUOBI) GetBatchLinearSwapContracts(ctx context.Context) ([]FuturesBatchTicker, error) {
+	var result struct {
+		Data []FuturesBatchTicker `json:"ticks"`
+	}
+	err := h.SendHTTPRequest(ctx, exchange.RestFutures, huobiBatchLinearSwapContracts, &result)
+	return result.Data, err
+}
+
+// GetBatchFuturesContracts returns the tickers for futures contracts
+func (h *HUOBI) GetBatchFuturesContracts(ctx context.Context) ([]FuturesBatchTicker, error) {
+	var result struct {
+		Data []FuturesBatchTicker `json:"ticks"`
+	}
+	err := h.SendHTTPRequest(ctx, exchange.RestFutures, huobiBatchContracts, &result)
+	return result.Data, err
 }
 
 // GetTickers returns the ticker for the specified symbol
@@ -429,20 +467,20 @@ func (h *HUOBI) CancelExistingOrder(ctx context.Context, orderID int64) (int64, 
 	return resp.OrderID, err
 }
 
-// CancelOrderBatch cancels a batch of orders -- to-do
-func (h *HUOBI) CancelOrderBatch(ctx context.Context, _ []int64) ([]CancelOrderBatch, error) {
-	type response struct {
+// CancelOrderBatch cancels a batch of orders
+func (h *HUOBI) CancelOrderBatch(ctx context.Context, orderIDs, clientOrderIDs []string) (*CancelOrderBatch, error) {
+	resp := struct {
 		Response
-		Data []CancelOrderBatch `json:"data"`
+		Data *CancelOrderBatch `json:"data"`
+	}{}
+	data := struct {
+		ClientOrderIDs []string `json:"client-order-ids"`
+		OrderIDs       []string `json:"order-ids"`
+	}{
+		ClientOrderIDs: clientOrderIDs,
+		OrderIDs:       orderIDs,
 	}
-
-	var result response
-	err := h.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, http.MethodPost, huobiOrderCancelBatch, url.Values{}, nil, &result, false)
-
-	if result.ErrorMessage != "" {
-		return nil, errors.New(result.ErrorMessage)
-	}
-	return result.Data, err
+	return resp.Data, h.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, http.MethodPost, huobiOrderCancelBatch, nil, data, &resp, false)
 }
 
 // CancelOpenOrdersBatch cancels a batch of orders -- to-do
@@ -552,7 +590,7 @@ func (h *HUOBI) GetOpenOrders(ctx context.Context, symbol currency.Pair, account
 	}
 	vals.Set("symbol", symbolValue)
 	vals.Set("accountID", accountID)
-	if len(side) > 0 {
+	if side != "" {
 		vals.Set("side", side)
 	}
 	vals.Set("size", strconv.FormatInt(size, 10))
@@ -815,6 +853,26 @@ func (h *HUOBI) QueryWithdrawQuotas(ctx context.Context, cryptocurrency string) 
 	return resp.WithdrawQuota, nil
 }
 
+// SearchForExistedWithdrawsAndDeposits returns withdrawal and deposit data
+func (h *HUOBI) SearchForExistedWithdrawsAndDeposits(ctx context.Context, c currency.Code, transferType, direction string, fromID, limit int64) (WithdrawalHistory, error) {
+	var resp WithdrawalHistory
+	vals := url.Values{}
+	vals.Set("type", transferType)
+	if !c.IsEmpty() {
+		vals.Set("currency", c.Lower().String())
+	}
+	if direction != "" {
+		vals.Set("direction", direction)
+	}
+	if fromID > 0 {
+		vals.Set("from", strconv.FormatInt(fromID, 10))
+	}
+	if limit > 0 {
+		vals.Set("size", strconv.FormatInt(limit, 10))
+	}
+	return resp, h.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, http.MethodGet, huobiWithdrawHistory, vals, nil, &resp, false)
+}
+
 // SendHTTPRequest sends an unauthenticated HTTP request
 func (h *HUOBI) SendHTTPRequest(ctx context.Context, ep exchange.URL, path string, result interface{}) error {
 	endpoint, err := h.API.Endpoints.GetURL(ep)
@@ -834,7 +892,7 @@ func (h *HUOBI) SendHTTPRequest(ctx context.Context, ep exchange.URL, path strin
 
 	err = h.SendPayload(ctx, request.Unset, func() (*request.Item, error) {
 		return item, nil
-	})
+	}, request.UnauthenticatedRequest)
 	if err != nil {
 		return err
 	}
@@ -855,6 +913,7 @@ func (h *HUOBI) SendHTTPRequest(ctx context.Context, ep exchange.URL, path strin
 
 // SendAuthenticatedHTTPRequest sends authenticated requests to the HUOBI API
 func (h *HUOBI) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange.URL, method, endpoint string, values url.Values, data, result interface{}, isVersion2API bool) error {
+	var err error
 	creds, err := h.GetCredentials(ctx)
 	if err != nil {
 		return err
@@ -916,14 +975,13 @@ func (h *HUOBI) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange.UR
 			Headers:       headers,
 			Body:          bytes.NewReader(body),
 			Result:        &interim,
-			AuthRequest:   true,
 			Verbose:       h.Verbose,
 			HTTPDebugging: h.HTTPDebugging,
 			HTTPRecording: h.HTTPRecording,
 		}, nil
 	}
 
-	err = h.SendPayload(ctx, request.Unset, newRequest)
+	err = h.SendPayload(ctx, request.Unset, newRequest, request.AuthenticatedRequest)
 	if err != nil {
 		return err
 	}
@@ -932,18 +990,22 @@ func (h *HUOBI) SendAuthenticatedHTTPRequest(ctx context.Context, ep exchange.UR
 		var errCap ResponseV2
 		if err = json.Unmarshal(interim, &errCap); err == nil {
 			if errCap.Code != 200 && errCap.Message != "" {
-				return fmt.Errorf("error code: %v error message: %s", errCap.Code, errCap.Message)
+				return fmt.Errorf("%w error code: %v error message: %s", request.ErrAuthRequestFailed, errCap.Code, errCap.Message)
 			}
 		}
 	} else {
 		var errCap Response
 		if err = json.Unmarshal(interim, &errCap); err == nil {
 			if errCap.Status == huobiStatusError && errCap.ErrorMessage != "" {
-				return fmt.Errorf("error code: %v error message: %s", errCap.ErrorCode, errCap.ErrorMessage)
+				return fmt.Errorf("%w error code: %v error message: %s", request.ErrAuthRequestFailed, errCap.ErrorCode, errCap.ErrorMessage)
 			}
 		}
 	}
-	return json.Unmarshal(interim, result)
+	err = json.Unmarshal(interim, result)
+	if err != nil {
+		return common.AppendError(err, request.ErrAuthRequestFailed)
+	}
+	return nil
 }
 
 // GetFee returns an estimate of fee based on type of transaction

@@ -4,16 +4,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thrasher-corp/gocryptotrader/common/key"
 	"github.com/thrasher-corp/gocryptotrader/config"
 	"github.com/thrasher-corp/gocryptotrader/currency"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 )
 
 // syncBase stores information
 type syncBase struct {
 	IsUsingWebsocket bool
 	IsUsingREST      bool
-	IsProcessing     bool
 	LastUpdated      time.Time
 	HaveData         bool
 	NumErrors        int
@@ -21,34 +20,19 @@ type syncBase struct {
 
 // currencyPairSyncAgent stores the sync agent info
 type currencyPairSyncAgent struct {
-	Created   time.Time
-	Exchange  string
-	AssetType asset.Item
-	Pair      currency.Pair
-	Ticker    syncBase
-	Orderbook syncBase
-	Trade     syncBase
+	Key      key.ExchangePairAsset
+	Pair     currency.Pair
+	Created  time.Time
+	trackers []*syncBase
+	locks    []sync.Mutex
 }
 
-// SyncManagerConfig stores the currency pair synchronization manager config
-type SyncManagerConfig struct {
-	SynchronizeTicker       bool
-	SynchronizeOrderbook    bool
-	SynchronizeTrades       bool
-	SynchronizeContinuously bool
-	TimeoutREST             time.Duration
-	TimeoutWebsocket        time.Duration
-	NumWorkers              int
-	FiatDisplayCurrency     currency.Code
-	PairFormatDisplay       *currency.PairFormat
-	Verbose                 bool
-}
-
-// syncManager stores the exchange currency pair syncer object
-type syncManager struct {
+// SyncManager stores the exchange currency pair syncer object
+type SyncManager struct {
 	initSyncCompleted              int32
 	initSyncStarted                int32
 	started                        int32
+	shutdown                       chan bool
 	format                         currency.PairFormat
 	initSyncStartTime              time.Time
 	fiatDisplayCurrency            currency.Code
@@ -57,10 +41,10 @@ type syncManager struct {
 	initSyncWG                     sync.WaitGroup
 	inService                      sync.WaitGroup
 
-	currencyPairs            []currencyPairSyncAgent
-	tickerBatchLastRequested map[string]time.Time
+	currencyPairs            map[key.ExchangePairAsset]*currencyPairSyncAgent
+	tickerBatchLastRequested map[key.ExchangeAsset]time.Time
 
 	remoteConfig    *config.RemoteControlConfig
-	config          SyncManagerConfig
+	config          config.SyncManagerConfig
 	exchangeManager iExchangeManager
 }

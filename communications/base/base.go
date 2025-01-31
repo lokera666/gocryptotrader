@@ -45,7 +45,7 @@ func (b *Base) GetName() string {
 func (b *Base) GetStatus() string {
 	return `
 	GoCryptoTrader Service: Online
-	Service Started: ` + b.ServiceStarted.String()
+	Service Started: ` + b.ServiceStarted.UTC().String()
 }
 
 // SetServiceStarted sets the time the service started
@@ -62,7 +62,7 @@ type CommunicationsConfig struct {
 	TelegramConfig  TelegramConfig  `json:"telegram"`
 }
 
-// IsAnyEnabled returns whether or any any comms relayers
+// IsAnyEnabled returns whether any comms relayers
 // are enabled
 func (c *CommunicationsConfig) IsAnyEnabled() bool {
 	if c.SMSGlobalConfig.Enabled ||
@@ -117,8 +117,9 @@ type SMTPConfig struct {
 
 // TelegramConfig holds all variables to start and run the Telegram package
 type TelegramConfig struct {
-	Name              string `json:"name"`
-	Enabled           bool   `json:"enabled"`
-	Verbose           bool   `json:"verbose"`
-	VerificationToken string `json:"verificationToken"`
+	Name              string           `json:"name"`
+	Enabled           bool             `json:"enabled"`
+	Verbose           bool             `json:"verbose"`
+	VerificationToken string           `json:"verificationToken"`
+	AuthorisedClients map[string]int64 `json:"authorisedClients"`
 }

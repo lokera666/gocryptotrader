@@ -16,6 +16,7 @@ const (
 	// Bitflyer chain analysis endpoints
 	// APIURL
 	chainAnalysis = "https://chainflyer.bitflyer.jp/v1/"
+	tradeBaseURL  = "https://lightning.bitflyer.com/trade/"
 
 	// Public endpoints for chain analysis
 	latestBlock        = "block/latest"
@@ -37,7 +38,7 @@ const (
 	pubGetHealth           = "/gethealth"
 	pubGetChats            = "/getchats"
 
-	// Autheticated Endpoints
+	// Authenticated Endpoints
 	privGetPermissions             = "/me/getpermissions"
 	privGetBalance                 = "/me/getbalance"
 	privMarginStatus               = "/me/getcollateral"
@@ -161,7 +162,7 @@ func (b *Bitflyer) GetExchangeStatus(ctx context.Context) (string, error) {
 }
 
 // GetChats returns trollbox chat log
-// Note: returns vary from instant to infinty
+// Note: returns vary from instant to infinity
 func (b *Bitflyer) GetChats(ctx context.Context, fromDate string) ([]ChatLog, error) {
 	var resp []ChatLog
 	v := url.Values{}
@@ -270,8 +271,8 @@ func (b *Bitflyer) GetExecutions() {
 	// Needs to be updated
 }
 
-// GetOpenInterest returns a summary of open interest
-func (b *Bitflyer) GetOpenInterest() {
+// GetOpenInterestData returns a summary of open interest
+func (b *Bitflyer) GetOpenInterestData() {
 	// Needs to be updated
 }
 
@@ -299,9 +300,9 @@ func (b *Bitflyer) SendHTTPRequest(ctx context.Context, ep exchange.URL, path st
 		HTTPDebugging: b.HTTPDebugging,
 		HTTPRecording: b.HTTPRecording,
 	}
-	return b.SendPayload(ctx, request.Unset, func() (*request.Item, error) {
+	return b.SendPayload(ctx, request.UnAuth, func() (*request.Item, error) {
 		return item, nil
-	})
+	}, request.UnauthenticatedRequest)
 }
 
 // SendAuthHTTPRequest sends an authenticated HTTP request

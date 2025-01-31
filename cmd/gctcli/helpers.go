@@ -6,11 +6,17 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"time"
 
-	"github.com/thrasher-corp/gocryptotrader/common"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+var (
+	// use these to change text colours in CMD output
+	redText     = "\033[38;5;203m"
+	greenText   = "\033[38;5;157m"
+	whiteText   = "\033[38;5;255m"
+	grayText    = "\033[38;5;243m"
+	defaultText = "\u001b[0m"
 )
 
 func clearScreen() error {
@@ -33,24 +39,4 @@ func closeConn(conn *grpc.ClientConn, cancel context.CancelFunc) {
 	if cancel != nil {
 		cancel()
 	}
-}
-
-// negateLocalOffset helps negate the offset of time generation
-// when the unix time gets to rpcserver, it no longer is the same time
-// that was sent as it handles it as a UTC value, even though when
-// using starttime it is generated as your local time
-// eg 2020-01-01 12:00:00 +10 will convert into
-// 2020-01-01 12:00:00 +00 when at RPCServer
-// so this function will minus the offset from the local sent time
-// to allow for proper use at RPCServer
-func negateLocalOffset(t time.Time) string {
-	_, offset := time.Now().Zone()
-	loc := time.FixedZone("", -offset)
-
-	return t.In(loc).Format(common.SimpleTimeFormat)
-}
-
-func negateLocalOffsetTS(t time.Time) *timestamppb.Timestamp {
-	_, offset := time.Now().Zone()
-	return timestamppb.New(t.Add(time.Duration(-offset) * time.Second))
 }

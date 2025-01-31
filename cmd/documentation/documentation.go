@@ -17,6 +17,8 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/common/file"
 	"github.com/thrasher-corp/gocryptotrader/core"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 const (
@@ -172,24 +174,74 @@ func main() {
 		// Github API missing contributors
 		contributors = append(contributors, []Contributor{
 			{
-				Login:         "herenow",
-				URL:           "https://github.com/herenow",
+				Login:         "andreygrehov",
+				URL:           "https://github.com/andreygrehov",
 				Contributions: 2,
 			},
 			{
-				Login:         "mshogin",
-				URL:           "https://github.com/mshogin",
+				Login:         "azhang",
+				URL:           "https://github.com/azhang",
 				Contributions: 2,
 			},
 			{
-				Login:         "soxipy",
-				URL:           "https://github.com/soxipy",
+				Login:         "bretep",
+				URL:           "https://github.com/bretep",
 				Contributions: 2,
 			},
 			{
-				Login:         "tk42",
-				URL:           "https://github.com/tk42",
+				Login:         "Christian-Achilli",
+				URL:           "https://github.com/Christian-Achilli",
 				Contributions: 2,
+			},
+			{
+				Login:         "cornelk",
+				URL:           "https://github.com/cornelk",
+				Contributions: 2,
+			},
+			{
+				Login:         "gam-phon",
+				URL:           "https://github.com/gam-phon",
+				Contributions: 2,
+			},
+			{
+				Login:         "if1live",
+				URL:           "https://github.com/if1live",
+				Contributions: 2,
+			},
+			{
+				Login:         "lozdog245",
+				URL:           "https://github.com/lozdog245",
+				Contributions: 2,
+			},
+			{
+				Login:         "MarkDzulko",
+				URL:           "https://github.com/MarkDzulko",
+				Contributions: 2,
+			},
+			{
+				Login:         "blombard",
+				URL:           "https://github.com/blombard",
+				Contributions: 1,
+			},
+			{
+				Login:         "cavapoo2",
+				URL:           "https://github.com/cavapoo2",
+				Contributions: 1,
+			},
+			{
+				Login:         "CodeLingoTeam",
+				URL:           "https://github.com/CodeLingoTeam",
+				Contributions: 1,
+			},
+			{
+				Login:         "CodeLingoBot",
+				URL:           "https://github.com/CodeLingoBot",
+				Contributions: 1,
+			},
+			{
+				Login:         "Daanikus",
+				URL:           "https://github.com/Daanikus",
+				Contributions: 1,
 			},
 			{
 				Login:         "daniel-cohen",
@@ -214,36 +266,6 @@ func main() {
 				Contributions: 1,
 			},
 			{
-				Login:         "mattkanwisher",
-				URL:           "https://github.com/mattkanwisher",
-				Contributions: 1,
-			},
-			{
-				Login:         "mKurrels",
-				URL:           "https://github.com/mKurrels",
-				Contributions: 1,
-			},
-			{
-				Login:         "m1kola",
-				URL:           "https://github.com/m1kola",
-				Contributions: 1,
-			},
-			{
-				Login:         "cavapoo2",
-				URL:           "https://github.com/cavapoo2",
-				Contributions: 1,
-			},
-			{
-				Login:         "zeldrinn",
-				URL:           "https://github.com/zeldrinn",
-				Contributions: 1,
-			},
-			{
-				Login:         "starit",
-				URL:           "https://github.com/starit",
-				Contributions: 1,
-			},
-			{
 				Login:         "Jimexist",
 				URL:           "https://github.com/Jimexist",
 				Contributions: 1,
@@ -254,38 +276,34 @@ func main() {
 				Contributions: 1,
 			},
 			{
+				Login:         "m1kola",
+				URL:           "https://github.com/m1kola",
+				Contributions: 1,
+			},
+			{
+				Login:         "mattkanwisher",
+				URL:           "https://github.com/mattkanwisher",
+				Contributions: 1,
+			},
+			{
 				Login:         "merkeld",
 				URL:           "https://github.com/merkeld",
 				Contributions: 1,
 			},
 			{
-				Login:         "CodeLingoTeam",
-				URL:           "https://github.com/CodeLingoTeam",
+				Login:         "mKurrels",
+				URL:           "https://github.com/mKurrels",
 				Contributions: 1,
 			},
 			{
-				Login:         "Daanikus",
-				URL:           "https://github.com/Daanikus",
-				Contributions: 1,
-			}, {
-				Login:         "CodeLingoBot",
-				URL:           "https://github.com/CodeLingoBot",
+				Login:         "starit",
+				URL:           "https://github.com/starit",
 				Contributions: 1,
 			},
 			{
-				Login:         "blombard",
-				URL:           "https://github.com/blombard",
+				Login:         "zeldrinn",
+				URL:           "https://github.com/zeldrinn",
 				Contributions: 1,
-			},
-			{
-				Login:         "soxipy",
-				URL:           "https://github.com/soxipy",
-				Contributions: 2,
-			},
-			{
-				Login:         "lozdog245",
-				URL:           "https://github.com/lozdog245",
-				Contributions: 2,
 			},
 		}...)
 
@@ -486,7 +504,7 @@ func GetPackageName(name string, capital bool) string {
 		i = len(newStrings) - 1
 	}
 	if capital {
-		return strings.Replace(strings.Title(newStrings[i]), "_", " ", -1) //nolint // ignore staticcheck strings.Title warning
+		return strings.Replace(cases.Title(language.English).String(newStrings[i]), "_", " ", -1)
 	}
 	return newStrings[i]
 }

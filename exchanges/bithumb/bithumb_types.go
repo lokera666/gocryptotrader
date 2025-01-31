@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/thrasher-corp/gocryptotrader/currency"
+	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
 // Ticker holds ticker data
@@ -127,31 +128,34 @@ type Orders struct {
 
 // OrderData contains all individual order details
 type OrderData struct {
-	OrderID         string      `json:"order_id"`
-	OrderCurrency   string      `json:"order_currency"`
-	OrderDate       bithumbTime `json:"order_date"`
-	PaymentCurrency string      `json:"payment_currency"`
-	Type            string      `json:"type"`
-	Status          string      `json:"status"`
-	Units           float64     `json:"units,string"`
-	UnitsRemaining  float64     `json:"units_remaining,string"`
-	Price           float64     `json:"price,string"`
-	Fee             float64     `json:"fee,string"`
-	Total           float64     `json:"total,string"`
+	OrderID         string     `json:"order_id"`
+	OrderCurrency   string     `json:"order_currency"`
+	OrderDate       types.Time `json:"order_date"`
+	PaymentCurrency string     `json:"payment_currency"`
+	Type            string     `json:"type"`
+	Status          string     `json:"status"`
+	Units           float64    `json:"units,string"`
+	UnitsRemaining  float64    `json:"units_remaining,string"`
+	Price           float64    `json:"price,string"`
+	Fee             float64    `json:"fee,string"`
+	Total           float64    `json:"total,string"`
 }
 
 // UserTransactions holds users full transaction list
 type UserTransactions struct {
 	Status string `json:"status"`
 	Data   []struct {
-		Search       string  `json:"search"`
-		TransferDate int64   `json:"transfer_date"`
-		Units        string  `json:"units"`
-		Price        float64 `json:"price,string"`
-		BTC1KRW      float64 `json:"btc1krw,string"`
-		Fee          string  `json:"fee"`
-		BTCRemain    float64 `json:"btc_remain,string"`
-		KRWRemain    float64 `json:"krw_remain,string"`
+		Search          int64         `json:"search,string"`
+		TransferDate    int64         `json:"transfer_date"`
+		OrderCurrency   currency.Code `json:"order_currency"`
+		PaymentCurrency currency.Code `json:"payment_currency"`
+		Units           float64       `json:"units,string"`
+		Price           float64       `json:"price,string"`
+		Amount          float64       `json:"amount,string"`
+		FeeCurrency     currency.Code `json:"fee_currency"`
+		Fee             float64       `json:"fee,string"`
+		OrderBalance    float64       `json:"order_balance,string"`
+		PaymentBalance  float64       `json:"payment_balance,string"`
 	} `json:"data"`
 	Message string `json:"message"`
 }
@@ -259,7 +263,7 @@ var WithdrawalFees = map[currency.Code]float64{
 	currency.LRC:   10,
 	currency.GTO:   15,
 	currency.STEEM: 0.01,
-	currency.STRAT: 0.2,
+	currency.STRAT: 0.2, //nolint:misspell // Not a misspelling
 	currency.PPT:   0.5,
 	currency.CTXC:  4,
 	currency.CMT:   20,

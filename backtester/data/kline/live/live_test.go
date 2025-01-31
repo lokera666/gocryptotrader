@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/backtester/common"
 	"github.com/thrasher-corp/gocryptotrader/common/convert"
@@ -13,14 +14,14 @@ import (
 	gctkline "github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 )
 
-const testExchange = "binance"
+const testExchange = "okx"
 
 func TestLoadCandles(t *testing.T) {
 	t.Parallel()
 	interval := gctkline.OneHour
-	cp1 := currency.NewPair(currency.BTC, currency.USDT)
+	cp := currency.NewPair(currency.BTC, currency.USDT)
 	a := asset.Spot
-	em := engine.SetupExchangeManager()
+	em := engine.NewExchangeManager()
 	exch, err := em.NewExchangeByName(testExchange)
 	if err != nil {
 		t.Fatal(err)
@@ -30,22 +31,21 @@ func TestLoadCandles(t *testing.T) {
 	exch.SetDefaults()
 	b.CurrencyPairs.Pairs = make(map[asset.Item]*currency.PairStore)
 	b.CurrencyPairs.Pairs[asset.Spot] = &currency.PairStore{
-		Available:     currency.Pairs{cp1},
-		Enabled:       currency.Pairs{cp1},
+		Available:     currency.Pairs{cp},
+		Enabled:       currency.Pairs{cp},
 		AssetEnabled:  convert.BoolPtr(true),
 		RequestFormat: pFormat,
 		ConfigFormat:  pFormat,
 	}
 	var data *gctkline.Item
-	data, err = LoadData(context.Background(),
-		exch, common.DataCandle, interval.Duration(), cp1, a)
+	data, err = LoadData(context.Background(), time.Now().Add(-interval.Duration()*10), exch, common.DataCandle, interval.Duration(), cp, currency.EMPTYPAIR, a, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(data.Candles) == 0 {
 		t.Error("expected candles")
 	}
-	_, err = LoadData(context.Background(), exch, -1, interval.Duration(), cp1, a)
+	_, err = LoadData(context.Background(), time.Now(), exch, -1, interval.Duration(), cp, currency.EMPTYPAIR, a, true)
 	if !errors.Is(err, common.ErrInvalidDataType) {
 		t.Errorf("received: %v, expected: %v", err, common.ErrInvalidDataType)
 	}
@@ -54,9 +54,9 @@ func TestLoadCandles(t *testing.T) {
 func TestLoadTrades(t *testing.T) {
 	t.Parallel()
 	interval := gctkline.OneMin
-	cp1 := currency.NewPair(currency.BTC, currency.USDT)
+	cp := currency.NewPair(currency.BTC, currency.USDT)
 	a := asset.Spot
-	em := engine.SetupExchangeManager()
+	em := engine.NewExchangeManager()
 	exch, err := em.NewExchangeByName(testExchange)
 	if err != nil {
 		t.Fatal(err)
@@ -66,14 +66,14 @@ func TestLoadTrades(t *testing.T) {
 	exch.SetDefaults()
 	b.CurrencyPairs.Pairs = make(map[asset.Item]*currency.PairStore)
 	b.CurrencyPairs.Pairs[asset.Spot] = &currency.PairStore{
-		Available:     currency.Pairs{cp1},
-		Enabled:       currency.Pairs{cp1},
+		Available:     currency.Pairs{cp},
+		Enabled:       currency.Pairs{cp},
 		AssetEnabled:  convert.BoolPtr(true),
 		RequestFormat: pFormat,
 		ConfigFormat:  pFormat,
 	}
 	var data *gctkline.Item
-	data, err = LoadData(context.Background(), exch, common.DataTrade, interval.Duration(), cp1, a)
+	data, err = LoadData(context.Background(), time.Now().Add(-interval.Duration()*60), exch, common.DataTrade, interval.Duration(), cp, currency.EMPTYPAIR, a, true)
 	if err != nil {
 		t.Fatal(err)
 	}

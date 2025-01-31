@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	// DefaultJobsLimit defines a maxiumum amount of jobs allowed in channel
+	// DefaultJobsLimit defines a maximum amount of jobs allowed in channel
 	DefaultJobsLimit = 100
 
 	// DefaultMaxWorkers is the package default worker ceiling amount
@@ -24,13 +24,13 @@ var dispatcher *Dispatcher
 
 // Dispatcher defines an internal subsystem communication/change state publisher
 type Dispatcher struct {
-	// routes refers to a subystem uuid ticket map with associated publish
+	// routes refers to a subsystem uuid ticket map with associated publish
 	// channels, a relayer will be given a unique id through its job channel,
 	// then publish the data across the full registered channels for that uuid.
 	// See relayer() method below.
 	routes map[uuid.UUID][]chan interface{}
-	// rMtx protects the routes variable ensuring acceptable read/write access
-	rMtx sync.RWMutex
+	// routesMtx protects the routes variable ensuring acceptable read/write access
+	routesMtx sync.Mutex
 
 	// Persistent buffered job queue for relayers
 	jobs chan job
@@ -53,6 +53,9 @@ type Dispatcher struct {
 
 	// dispatcher write protection
 	m sync.RWMutex
+	// subscriberCount atomically stores the amount of subscription endpoints
+	// to verify whether to send out any jobs
+	subscriberCount int32
 }
 
 // job defines a relaying job associated with a ticket which allows routing to
@@ -71,8 +74,8 @@ type Mux struct {
 
 // Pipe defines an outbound object to the desired routine
 type Pipe struct {
-	// Channel to get all our lovely informations
-	C <-chan interface{}
+	// Channel to get all our lovely information
+	c chan interface{}
 	// ID to tracked system
 	id uuid.UUID
 	// Reference to multiplexer

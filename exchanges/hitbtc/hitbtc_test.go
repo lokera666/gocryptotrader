@@ -2,15 +2,15 @@ package hitbtc
 
 import (
 	"context"
-	"errors"
 	"log"
 	"net/http"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/config"
 	"github.com/thrasher-corp/gocryptotrader/core"
@@ -21,11 +21,16 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
+	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
+	testsubs "github.com/thrasher-corp/gocryptotrader/internal/testing/subscriptions"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
-var h HitBTC
-var wsSetupRan bool
+var (
+	h          = &HitBTC{}
+	wsSetupRan bool
+)
 
 // Please supply your own APIKEYS here for due diligence testing
 const (
@@ -54,34 +59,26 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatal("HitBTC setup error", err)
 	}
-	os.Exit(m.Run())
-}
 
-func TestStart(t *testing.T) {
-	t.Parallel()
-	err := h.Start(nil)
-	if !errors.Is(err, common.ErrNilPointer) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, common.ErrNilPointer)
-	}
-	var testWg sync.WaitGroup
-	err = h.Start(&testWg)
+	err = h.UpdateTradablePairs(context.Background(), false)
 	if err != nil {
-		t.Fatal(err)
+		log.Fatal("HitBTC setup error", err)
 	}
-	testWg.Wait()
+
+	os.Exit(m.Run())
 }
 
 func TestGetOrderbook(t *testing.T) {
 	_, err := h.GetOrderbook(context.Background(), "BTCUSD", 50)
 	if err != nil {
-		t.Error("Test faild - HitBTC GetOrderbook() error", err)
+		t.Error("Test failed - HitBTC GetOrderbook() error", err)
 	}
 }
 
 func TestGetTrades(t *testing.T) {
 	_, err := h.GetTrades(context.Background(), "BTCUSD", "", "", 0, 0, 0, 0)
 	if err != nil {
-		t.Error("Test faild - HitBTC GetTradeHistory() error", err)
+		t.Error("Test failed - HitBTC GetTradeHistory() error", err)
 	}
 }
 
@@ -89,54 +86,43 @@ func TestGetChartCandles(t *testing.T) {
 	_, err := h.GetCandles(context.Background(),
 		"BTCUSD", "", "D1", time.Now().Add(-24*time.Hour), time.Now())
 	if err != nil {
-		t.Error("Test faild - HitBTC GetChartData() error", err)
+		t.Error("Test failed - HitBTC GetChartData() error", err)
 	}
 }
 
 func TestGetHistoricCandles(t *testing.T) {
-	currencyPair, err := currency.NewPairFromString("BTC-USD")
-	if err != nil {
-		t.Fatal(err)
-	}
-	startTime := time.Now().Add(-time.Hour * 24)
-	end := time.Now()
-	_, err = h.GetHistoricCandles(context.Background(),
-		currencyPair, asset.Spot, startTime, end, kline.OneMin)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Parallel()
 
-	_, err = h.GetHistoricCandles(context.Background(),
-		currencyPair, asset.Spot, startTime, end, kline.Interval(time.Hour*7))
-	if err == nil {
-		t.Fatal("unexpected result")
+	pair, err := currency.NewPairFromString("BTC-USD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	startTime := time.Now().Add(-time.Hour * 6)
+	end := time.Now()
+	_, err = h.GetHistoricCandles(context.Background(), pair, asset.Spot, kline.OneMin, startTime, end)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestGetHistoricCandlesExtended(t *testing.T) {
-	currencyPair, err := currency.NewPairFromString("BTC-USD")
+	t.Parallel()
+	pair, err := currency.NewPairFromString("BTC-USD")
 	if err != nil {
 		t.Fatal(err)
 	}
 	startTime := time.Unix(1546300800, 0)
 	end := time.Unix(1577836799, 0)
-	_, err = h.GetHistoricCandlesExtended(context.Background(),
-		currencyPair, asset.Spot, startTime, end, kline.OneHour)
+	_, err = h.GetHistoricCandlesExtended(context.Background(), pair, asset.Spot, kline.OneHour, startTime, end)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	_, err = h.GetHistoricCandlesExtended(context.Background(),
-		currencyPair, asset.Spot, startTime, end, kline.Interval(time.Hour*7))
-	if err == nil {
-		t.Fatal("unexpected result")
 	}
 }
 
 func TestGetCurrencies(t *testing.T) {
 	_, err := h.GetCurrencies(context.Background())
 	if err != nil {
-		t.Error("Test faild - HitBTC GetCurrencies() error", err)
+		t.Error("Test failed - HitBTC GetCurrencies() error", err)
 	}
 }
 
@@ -158,7 +144,7 @@ func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !areTestAPIKeysSet() {
+	if !sharedtestvalues.AreAPICredentialsSet(h) {
 		if feeBuilder.FeeType != exchange.OfflineTradeFee {
 			t.Errorf("Expected %v, received %v", exchange.OfflineTradeFee, feeBuilder.FeeType)
 		}
@@ -170,7 +156,7 @@ func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
 }
 
 func TestUpdateTicker(t *testing.T) {
-	pairs, err := currency.NewPairsFromStrings([]string{"BTC-USD", "XRP-USD"})
+	pairs, err := currency.NewPairsFromStrings([]string{"BTC-USD", "XRP-USDT"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,15 +164,11 @@ func TestUpdateTicker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = h.UpdateTicker(context.Background(),
-		currency.NewPair(currency.BTC, currency.USD),
-		asset.Spot)
+	_, err = h.UpdateTicker(context.Background(), pairs[0], asset.Spot)
 	if err != nil {
 		t.Error(err)
 	}
-
-	_, err = h.FetchTicker(context.Background(),
-		currency.NewPair(currency.XRP, currency.USD), asset.Spot)
+	_, err = h.FetchTicker(context.Background(), pairs[1], asset.Spot)
 	if err != nil {
 		t.Error(err)
 	}
@@ -196,6 +178,18 @@ func TestUpdateTickers(t *testing.T) {
 	err := h.UpdateTickers(context.Background(), asset.Spot)
 	if err != nil {
 		t.Error(err)
+	}
+
+	enabled, err := h.GetEnabledPairs(asset.Spot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for j := range enabled {
+		_, err = h.FetchTicker(context.Background(), enabled[j], asset.Spot)
+		if err != nil {
+			t.Error(err)
+		}
 	}
 }
 
@@ -215,7 +209,7 @@ func TestGetSingularTicker(t *testing.T) {
 
 func TestGetFee(t *testing.T) {
 	var feeBuilder = setFeeBuilder()
-	if areTestAPIKeysSet() {
+	if sharedtestvalues.AreAPICredentialsSet(h) {
 		// CryptocurrencyTradeFee Basic
 		if _, err := h.GetFee(context.Background(), feeBuilder); err != nil {
 			t.Error(err)
@@ -289,45 +283,44 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 }
 
 func TestGetActiveOrders(t *testing.T) {
-	var getOrdersRequest = order.GetOrdersRequest{
+	t.Parallel()
+	var getOrdersRequest = order.MultiOrderRequest{
 		Type:      order.AnyType,
 		Pairs:     []currency.Pair{currency.NewPair(currency.ETH, currency.BTC)},
 		AssetType: asset.Spot,
+		Side:      order.AnySide,
 	}
 
 	_, err := h.GetActiveOrders(context.Background(), &getOrdersRequest)
-	if areTestAPIKeysSet() && err != nil {
+	if sharedtestvalues.AreAPICredentialsSet(h) && err != nil {
 		t.Errorf("Could not get open orders: %s", err)
-	} else if !areTestAPIKeysSet() && err == nil {
+	} else if !sharedtestvalues.AreAPICredentialsSet(h) && err == nil {
 		t.Error("Expecting an error when no keys are set")
 	}
 }
 
 func TestGetOrderHistory(t *testing.T) {
-	var getOrdersRequest = order.GetOrdersRequest{
+	t.Parallel()
+	var getOrdersRequest = order.MultiOrderRequest{
 		Type:      order.AnyType,
 		AssetType: asset.Spot,
 		Pairs:     []currency.Pair{currency.NewPair(currency.ETH, currency.BTC)},
+		Side:      order.AnySide,
 	}
 
 	_, err := h.GetOrderHistory(context.Background(), &getOrdersRequest)
-	if areTestAPIKeysSet() && err != nil {
+	if sharedtestvalues.AreAPICredentialsSet(h) && err != nil {
 		t.Errorf("Could not get order history: %s", err)
-	} else if !areTestAPIKeysSet() && err == nil {
+	} else if !sharedtestvalues.AreAPICredentialsSet(h) && err == nil {
 		t.Error("Expecting an error when no keys are set")
 	}
 }
 
 // Any tests below this line have the ability to impact your orders on the exchange. Enable canManipulateRealOrders to run them
 // ----------------------------------------------------------------------------------------------------------------------------
-func areTestAPIKeysSet() bool {
-	return h.ValidateAPICredentials(h.GetDefaultCredentials()) == nil
-}
-
 func TestSubmitOrder(t *testing.T) {
-	if areTestAPIKeysSet() && !canManipulateRealOrders {
-		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
-	}
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCannotManipulateOrders(t, h, canManipulateRealOrders)
 
 	var orderSubmission = &order.Submit{
 		Exchange: h.Name,
@@ -343,17 +336,16 @@ func TestSubmitOrder(t *testing.T) {
 		AssetType: asset.Spot,
 	}
 	response, err := h.SubmitOrder(context.Background(), orderSubmission)
-	if areTestAPIKeysSet() && (err != nil || response.Status != order.New) {
+	if sharedtestvalues.AreAPICredentialsSet(h) && (err != nil || response.Status != order.New) {
 		t.Errorf("Order failed to be placed: %v", err)
-	} else if !areTestAPIKeysSet() && err == nil {
+	} else if !sharedtestvalues.AreAPICredentialsSet(h) && err == nil {
 		t.Error("Expecting an error when no keys are set")
 	}
 }
 
 func TestCancelExchangeOrder(t *testing.T) {
-	if areTestAPIKeysSet() && !canManipulateRealOrders {
-		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
-	}
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCannotManipulateOrders(t, h, canManipulateRealOrders)
 
 	currencyPair := currency.NewPair(currency.LTC, currency.BTC)
 	var orderCancellation = &order.Cancel{
@@ -365,18 +357,17 @@ func TestCancelExchangeOrder(t *testing.T) {
 	}
 
 	err := h.CancelOrder(context.Background(), orderCancellation)
-	if !areTestAPIKeysSet() && err == nil {
+	if !sharedtestvalues.AreAPICredentialsSet(h) && err == nil {
 		t.Error("Expecting an error when no keys are set")
 	}
-	if areTestAPIKeysSet() && err != nil {
+	if sharedtestvalues.AreAPICredentialsSet(h) && err != nil {
 		t.Errorf("Could not cancel orders: %v", err)
 	}
 }
 
 func TestCancelAllExchangeOrders(t *testing.T) {
-	if areTestAPIKeysSet() && !canManipulateRealOrders {
-		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
-	}
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCannotManipulateOrders(t, h, canManipulateRealOrders)
 
 	currencyPair := currency.NewPair(currency.LTC, currency.BTC)
 	var orderCancellation = &order.Cancel{
@@ -389,10 +380,10 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 
 	resp, err := h.CancelAllOrders(context.Background(), orderCancellation)
 
-	if !areTestAPIKeysSet() && err == nil {
+	if !sharedtestvalues.AreAPICredentialsSet(h) && err == nil {
 		t.Error("Expecting an error when no keys are set")
 	}
-	if areTestAPIKeysSet() && err != nil {
+	if sharedtestvalues.AreAPICredentialsSet(h) && err != nil {
 		t.Errorf("Could not cancel orders: %v", err)
 	}
 
@@ -402,9 +393,9 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 }
 
 func TestModifyOrder(t *testing.T) {
-	if areTestAPIKeysSet() && !canManipulateRealOrders {
-		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
-	}
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCannotManipulateOrders(t, h, canManipulateRealOrders)
+
 	_, err := h.ModifyOrder(context.Background(),
 		&order.Modify{AssetType: asset.Spot})
 	if err == nil {
@@ -413,6 +404,9 @@ func TestModifyOrder(t *testing.T) {
 }
 
 func TestWithdraw(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCannotManipulateOrders(t, h, canManipulateRealOrders)
+
 	withdrawCryptoRequest := withdraw.Request{
 		Exchange:    h.Name,
 		Amount:      -1,
@@ -423,24 +417,19 @@ func TestWithdraw(t *testing.T) {
 		},
 	}
 
-	if areTestAPIKeysSet() && !canManipulateRealOrders {
-		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
-	}
-
 	_, err := h.WithdrawCryptocurrencyFunds(context.Background(),
 		&withdrawCryptoRequest)
-	if !areTestAPIKeysSet() && err == nil {
+	if !sharedtestvalues.AreAPICredentialsSet(h) && err == nil {
 		t.Error("Expecting an error when no keys are set")
 	}
-	if areTestAPIKeysSet() && err != nil {
+	if sharedtestvalues.AreAPICredentialsSet(h) && err != nil {
 		t.Errorf("Withdraw failed to be placed: %v", err)
 	}
 }
 
 func TestWithdrawFiat(t *testing.T) {
-	if areTestAPIKeysSet() && !canManipulateRealOrders {
-		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
-	}
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCannotManipulateOrders(t, h, canManipulateRealOrders)
 
 	var withdrawFiatRequest = withdraw.Request{}
 	_, err := h.WithdrawFiatFunds(context.Background(), &withdrawFiatRequest)
@@ -450,9 +439,8 @@ func TestWithdrawFiat(t *testing.T) {
 }
 
 func TestWithdrawInternationalBank(t *testing.T) {
-	if areTestAPIKeysSet() && !canManipulateRealOrders {
-		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
-	}
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCannotManipulateOrders(t, h, canManipulateRealOrders)
 
 	var withdrawFiatRequest = withdraw.Request{}
 	_, err := h.WithdrawFiatFundsToInternationalBank(context.Background(),
@@ -463,7 +451,8 @@ func TestWithdrawInternationalBank(t *testing.T) {
 }
 
 func TestGetDepositAddress(t *testing.T) {
-	if areTestAPIKeysSet() {
+	t.Parallel()
+	if sharedtestvalues.AreAPICredentialsSet(h) {
 		_, err := h.GetDepositAddress(context.Background(), currency.XRP, "", "")
 		if err != nil {
 			t.Error("GetDepositAddress() error", err)
@@ -475,13 +464,14 @@ func TestGetDepositAddress(t *testing.T) {
 		}
 	}
 }
+
 func setupWsAuth(t *testing.T) {
 	t.Helper()
 	if wsSetupRan {
 		return
 	}
-	if !h.Websocket.IsEnabled() && !h.API.AuthenticatedWebsocketSupport || !areTestAPIKeysSet() {
-		t.Skip(stream.WebsocketNotEnabled)
+	if !h.Websocket.IsEnabled() && !h.API.AuthenticatedWebsocketSupport || !sharedtestvalues.AreAPICredentialsSet(h) {
+		t.Skip(stream.ErrWebsocketNotEnabled.Error())
 	}
 
 	var dialer websocket.Dialer
@@ -987,6 +977,7 @@ func TestWsTrades(t *testing.T) {
 }
 
 func Test_FormatExchangeKlineInterval(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		interval kline.Interval
@@ -1008,18 +999,20 @@ func Test_FormatExchangeKlineInterval(t *testing.T) {
 			"D7",
 		},
 		{
-			"AllOther",
+			"OneMonth",
 			kline.OneMonth,
-			"",
+			"1M",
 		},
 	}
 
 	for x := range testCases {
 		test := testCases[x]
-
 		t.Run(test.name, func(t *testing.T) {
-			ret := h.FormatExchangeKlineInterval(test.interval)
-
+			t.Parallel()
+			ret, err := formatExchangeKlineInterval(test.interval)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if ret != test.output {
 				t.Fatalf("unexpected result return expected: %v received: %v", test.output, ret)
 			}
@@ -1058,4 +1051,108 @@ func TestGetHistoricTrades(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+}
+
+func TestGetActiveOrderByClientOrderID(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, h)
+
+	_, err := h.GetActiveOrderByClientOrderID(context.Background(), "1234")
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestGetOrderInfo(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, h)
+
+	_, err := h.GetOrderInfo(context.Background(), "1234", currency.NewPair(currency.BTC, currency.USD), asset.Spot)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestFetchTradablePairs(t *testing.T) {
+	t.Parallel()
+	if _, err := h.FetchTradablePairs(context.Background(), asset.Spot); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetCurrencyTradeURL(t *testing.T) {
+	t.Parallel()
+	testexch.UpdatePairsOnce(t, h)
+	for _, a := range h.GetAssetTypes(false) {
+		pairs, err := h.CurrencyPairs.GetPairs(a, false)
+		require.NoError(t, err, "cannot get pairs for %s", a)
+		require.NotEmpty(t, pairs, "no pairs for %s", a)
+		resp, err := h.GetCurrencyTradeURL(context.Background(), a, pairs[0])
+		require.NoError(t, err)
+		assert.NotEmpty(t, resp)
+	}
+}
+
+func TestGenerateSubscriptions(t *testing.T) {
+	t.Parallel()
+
+	h := new(HitBTC)
+	require.NoError(t, testexch.Setup(h), "Test instance Setup must not error")
+
+	h.Websocket.SetCanUseAuthenticatedEndpoints(true)
+	require.True(t, h.Websocket.CanUseAuthenticatedEndpoints(), "CanUseAuthenticatedEndpoints must return true")
+	subs, err := h.generateSubscriptions()
+	require.NoError(t, err, "generateSubscriptions must not error")
+	exp := subscription.List{}
+	pairs, err := h.GetEnabledPairs(asset.Spot)
+	require.NoErrorf(t, err, "GetEnabledPairs must not error")
+	for _, s := range h.Features.Subscriptions {
+		for _, p := range pairs.Format(currency.PairFormat{Uppercase: true}) {
+			s = s.Clone()
+			s.Pairs = currency.Pairs{p}
+			n := subscriptionNames[s.Channel]
+			switch s.Channel {
+			case subscription.MyAccountChannel:
+				s.QualifiedChannel = `{"method":"` + n + `"}`
+			case subscription.CandlesChannel:
+				s.QualifiedChannel = `{"method":"` + n + `","params":{"symbol":"` + p.String() + `","period":"M30","limit":100}}`
+			case subscription.AllTradesChannel:
+				s.QualifiedChannel = `{"method":"` + n + `","params":{"symbol":"` + p.String() + `","limit":100}}`
+			default:
+				s.QualifiedChannel = `{"method":"` + n + `","params":{"symbol":"` + p.String() + `"}}`
+			}
+			exp = append(exp, s)
+		}
+	}
+	testsubs.EqualLists(t, exp, subs)
+}
+
+func TestIsSymbolChannel(t *testing.T) {
+	t.Parallel()
+	assert.True(t, isSymbolChannel(&subscription.Subscription{Channel: subscription.TickerChannel}))
+	assert.False(t, isSymbolChannel(&subscription.Subscription{Channel: subscription.MyAccountChannel}))
+}
+
+func TestSubToReq(t *testing.T) {
+	t.Parallel()
+	p := currency.NewPairWithDelimiter("BTC", "USD", "-")
+	r := subToReq(&subscription.Subscription{Channel: subscription.TickerChannel}, p)
+	assert.Equal(t, "Ticker", r.Method)
+	assert.Equal(t, "BTC-USD", (r.Params.Symbol))
+
+	r = subToReq(&subscription.Subscription{Channel: subscription.CandlesChannel, Levels: 4, Interval: kline.OneHour}, p)
+	assert.Equal(t, "Candles", r.Method)
+	assert.Equal(t, "H1", r.Params.Period)
+	assert.Equal(t, 4, r.Params.Limit)
+	assert.Equal(t, "BTC-USD", (r.Params.Symbol))
+
+	r = subToReq(&subscription.Subscription{Channel: subscription.AllTradesChannel, Levels: 150})
+	assert.Equal(t, "Trades", r.Method)
+	assert.Equal(t, 150, r.Params.Limit)
+
+	assert.PanicsWithError(t,
+		"subscription channel not supported: myTrades",
+		func() { subToReq(&subscription.Subscription{Channel: subscription.MyTradesChannel}, p) },
+		"should panic on invalid channel",
+	)
 }

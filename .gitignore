@@ -1,8 +1,12 @@
+wrapperconfig.json
 config.json
 config.dat
 node_modules
 lib
+
+# VS Code
 .vscode
+tmp/
 
 testdata/dump
 testdata/preengine_config.json
@@ -15,6 +19,7 @@ vendor/
 
 # Binaries for programs and plugins
 gocryptotrader
+/backtester/backtester
 cmd/gctcli/gctcli
 backtester/backtester
 backtester/btcli/btcli
@@ -44,3 +49,5 @@ __debug_bin
 
 # Coverage reports
 coverage.txt
+wrapperconfig.json
+.history/

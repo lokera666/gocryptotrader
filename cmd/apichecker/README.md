@@ -6,7 +6,7 @@
 [![Build Status](https://github.com/thrasher-corp/gocryptotrader/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/thrasher-corp/gocryptotrader/actions/workflows/tests.yml)
 [![Software License](https://img.shields.io/badge/License-MIT-orange.svg?style=flat-square)](https://github.com/thrasher-corp/gocryptotrader/blob/master/LICENSE)
 [![GoDoc](https://godoc.org/github.com/thrasher-corp/gocryptotrader?status.svg)](https://godoc.org/github.com/thrasher-corp/gocryptotrader/cmd/apichecker)
-[![Coverage Status](http://codecov.io/github/thrasher-corp/gocryptotrader/coverage.svg?branch=master)](http://codecov.io/github/thrasher-corp/gocryptotrader?branch=master)
+[![Coverage Status](https://codecov.io/gh/thrasher-corp/gocryptotrader/graph/badge.svg?token=41784B23TS)](https://codecov.io/gh/thrasher-corp/gocryptotrader)
 [![Go Report Card](https://goreportcard.com/badge/github.com/thrasher-corp/gocryptotrader)](https://goreportcard.com/report/github.com/thrasher-corp/gocryptotrader)
 
 
@@ -14,7 +14,7 @@ This apichecker package is part of the GoCryptoTrader codebase.
 
 ## This is still in active development
 
-You can track ideas, planned features and what's in progress on this Trello board: [https://trello.com/b/ZAhMhpOy/gocryptotrader](https://trello.com/b/ZAhMhpOy/gocryptotrader).
+You can track ideas, planned features and what's in progress on our [GoCryptoTrader Kanban board](https://github.com/orgs/thrasher-corp/projects/3).
 
 Join our slack to discuss all things related to GoCryptoTrader! [GoCryptoTrader Slack](https://join.slack.com/t/gocryptotrader/shared_invite/enQtNTQ5NDAxMjA2Mjc5LTc5ZDE1ZTNiOGM3ZGMyMmY1NTAxYWZhODE0MWM5N2JlZDk1NDU0YTViYzk4NTk3OTRiMDQzNGQ1YTc4YmRlMTk)
 
@@ -57,7 +57,7 @@ go build && apichecker.exe
 + Upon addition of a new exchange, to update Trello checklist and to add the exchange to updates.json the following would need to be done:
 
 ###### HTML Scraping method:
-HTMLScrapingData is a struct which contains the necessary information to scrape data from the given path website. Not all the elements of HTMLScrapingData are necessary, its all dependant on site where information is being extracted from. Regexp is used to capture necessary bits of data using r.FindString() where r is the declared regular expression. If update dates data is available, DateFormat is used to convert the dates to a more standard format which can then be used for further comparisons of which update is most recent.
+HTMLScrapingData is a struct which contains the necessary information to scrape data from the given path website. Not all the elements of HTMLScrapingData are necessary, its all dependent on site where information is being extracted from. Regexp is used to capture necessary bits of data using r.FindString() where r is the declared regular expression. If update dates data is available, DateFormat is used to convert the dates to a more standard format which can then be used for further comparisons of which update is most recent.
 ```go
 func TestAdd(t *testing.T) {
 	t.Parallel()

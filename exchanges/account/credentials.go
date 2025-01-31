@@ -43,12 +43,13 @@ var (
 
 // Credentials define parameters that allow for an authenticated request.
 type Credentials struct {
-	Key             string
-	Secret          string
-	ClientID        string // TODO: Implement with exchange orders functionality
-	PEMKey          string
-	SubAccount      string
-	OneTimePassword string
+	Key                 string
+	Secret              string
+	ClientID            string // TODO: Implement with exchange orders functionality
+	PEMKey              string
+	SubAccount          string
+	OneTimePassword     string
+	SecretBase64Decoded bool
 	// TODO: Add AccessControl uint8 for READ/WRITE/Withdraw capabilities.
 }
 
@@ -118,7 +119,7 @@ func (c *Credentials) Equal(other *Credentials) bool {
 		other != nil &&
 		c.Key == other.Key &&
 		c.ClientID == other.ClientID &&
-		c.SubAccount == other.SubAccount
+		(c.SubAccount == other.SubAccount || c.SubAccount == "" && other.SubAccount == "main" || c.SubAccount == "main" && other.SubAccount == "")
 }
 
 // ContextCredentialsStore protects the stored credentials for use in a context

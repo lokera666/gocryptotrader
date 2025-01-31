@@ -1,10 +1,11 @@
 package statistics
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/shopspring/decimal"
-	"github.com/thrasher-corp/gocryptotrader/backtester/common"
+	"github.com/thrasher-corp/gocryptotrader/backtester/data"
 	gctcommon "github.com/thrasher-corp/gocryptotrader/common"
 	gctmath "github.com/thrasher-corp/gocryptotrader/common/math"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
@@ -13,29 +14,30 @@ import (
 
 // CalculateResults calculates all statistics for the exchange, asset, currency pair
 func (c *CurrencyPairStatistic) CalculateResults(riskFreeRate decimal.Decimal) error {
-	var errs gctcommon.Errors
-	var err error
 	first := c.Events[0]
+	if first.DataEvent == nil {
+		// you can call stop while a backtester run is running
+		// if the first data event isn't present, then it hasn't been properly run
+		return errNoDataAtOffset
+	}
 	sep := fmt.Sprintf("%v %v %v |\t", first.DataEvent.GetExchange(), first.DataEvent.GetAssetType(), first.DataEvent.Pair())
 
 	firstPrice := first.ClosePrice
 	last := c.Events[len(c.Events)-1]
+	if last.ComplianceSnapshot == nil {
+		return errMissingSnapshots
+	}
 	lastPrice := last.ClosePrice
-	for i := range last.Transactions.Orders {
-		switch last.Transactions.Orders[i].Order.Side {
-		case gctorder.Buy, gctorder.Bid:
+	for i := range last.ComplianceSnapshot.Orders {
+		if last.ComplianceSnapshot.Orders[i].Order.Side.IsLong() {
 			c.BuyOrders++
-		case gctorder.Sell, gctorder.Ask:
+		} else {
 			c.SellOrders++
-		case gctorder.Long:
-			c.LongOrders++
-		case gctorder.Short:
-			c.ShortOrders++
 		}
 	}
 	for i := range c.Events {
 		price := c.Events[i].ClosePrice
-		if price.LessThan(c.LowestClosePrice.Value) || !c.LowestClosePrice.Set {
+		if (price.LessThan(c.LowestClosePrice.Value) || !c.LowestClosePrice.Set) && !price.IsZero() {
 			c.LowestClosePrice.Value = price
 			c.LowestClosePrice.Time = c.Events[i].Time
 			c.LowestClosePrice.Set = true
@@ -51,18 +53,18 @@ func (c *CurrencyPairStatistic) CalculateResults(riskFreeRate decimal.Decimal) e
 	if !firstPrice.IsZero() {
 		c.MarketMovement = lastPrice.Sub(firstPrice).Div(firstPrice).Mul(oneHundred)
 	}
-	if first.Holdings.TotalValue.GreaterThan(decimal.Zero) {
+	if !first.Holdings.TotalValue.IsZero() {
 		c.StrategyMovement = last.Holdings.TotalValue.Sub(first.Holdings.TotalValue).Div(first.Holdings.TotalValue).Mul(oneHundred)
 	}
 	c.analysePNLGrowth()
-	err = c.calculateHighestCommittedFunds()
+	err := c.calculateHighestCommittedFunds()
 	if err != nil {
 		return err
 	}
 	returnsPerCandle := make([]decimal.Decimal, len(c.Events))
 	benchmarkRates := make([]decimal.Decimal, len(c.Events))
 
-	allDataEvents := make([]common.DataEventHandler, len(c.Events))
+	allDataEvents := make([]data.Event, len(c.Events))
 	for i := range c.Events {
 		returnsPerCandle[i] = c.Events[i].Holdings.ChangeInTotalValuePercent
 		allDataEvents[i] = c.Events[i].DataEvent
@@ -88,9 +90,10 @@ func (c *CurrencyPairStatistic) CalculateResults(riskFreeRate decimal.Decimal) e
 	// ratio calculations as no movement has been made
 	benchmarkRates = benchmarkRates[1:]
 	returnsPerCandle = returnsPerCandle[1:]
+	var errs error
 	c.MaxDrawdown, err = CalculateBiggestEventDrawdown(allDataEvents)
 	if err != nil {
-		errs = append(errs, err)
+		errs = gctcommon.AppendError(errs, err)
 	}
 
 	interval := first.DataEvent.GetInterval()
@@ -109,8 +112,8 @@ func (c *CurrencyPairStatistic) CalculateResults(riskFreeRate decimal.Decimal) e
 			decimal.NewFromFloat(intervalsPerYear),
 			decimal.NewFromInt(int64(len(c.Events))),
 		)
-		if err != nil {
-			errs = append(errs, err)
+		if err != nil && !errors.Is(err, gctmath.ErrPowerDifferenceTooSmall) {
+			errs = gctcommon.AppendError(errs, err)
 		}
 		c.CompoundAnnualGrowthRate = cagr
 	}
@@ -125,10 +128,7 @@ func (c *CurrencyPairStatistic) CalculateResults(riskFreeRate decimal.Decimal) e
 		c.UnrealisedPNL = last.PNL.GetUnrealisedPNL().PNL
 		c.RealisedPNL = last.PNL.GetRealisedPNL().PNL
 	}
-	if len(errs) > 0 {
-		return errs
-	}
-	return nil
+	return errs
 }
 
 func (c *CurrencyPairStatistic) calculateHighestCommittedFunds() error {

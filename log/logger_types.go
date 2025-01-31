@@ -11,31 +11,49 @@ const (
 	// DefaultMaxFileSize for logger rotation file
 	DefaultMaxFileSize int64 = 100
 
-	defaultCapacityForSliceOfBytes = 100
+	// defaultBufferCapacity has 200kb of memory per buffer, there has been some
+	// instances where it was 3/4 of this. This size so as to not need a resize.
+	defaultBufferCapacity     = 200000
+	defaultJobChannelCapacity = 10000
 )
 
 var (
 	logger = Logger{}
 	// FileLoggingConfiguredCorrectly flag set during config check if file logging meets requirements
-	FileLoggingConfiguredCorrectly bool
+	fileLoggingConfiguredCorrectly bool
 	// GlobalLogConfig holds global configuration options for logger
-	GlobalLogConfig = &Config{}
+	globalLogConfig = &Config{}
 	// GlobalLogFile hold global configuration options for file logger
-	GlobalLogFile = &Rotate{}
+	globalLogFile = &Rotate{}
 
-	eventPool = &sync.Pool{
-		New: func() interface{} {
-			sliceOBytes := make([]byte, 0, defaultCapacityForSliceOfBytes)
-			return &sliceOBytes
-		},
-	}
+	jobsPool    = &sync.Pool{New: func() interface{} { return new(job) }}
+	jobsChannel = make(chan *job, defaultJobChannelCapacity)
+
+	// Note: Logger state within logFields will be persistent until it's garbage
+	// collected. This is a little bit more efficient.
+	logFieldsPool = &sync.Pool{New: func() interface{} { return &fields{logger: logger} }}
 
 	// LogPath system path to store log files in
-	LogPath string
+	logPath string
 
-	// RWM read/write mutex for logger
-	RWM = &sync.RWMutex{}
+	// read/write mutex for logger
+	mu = &sync.RWMutex{}
 )
+
+type job struct {
+	Writers           []io.Writer
+	fn                deferral
+	Header            string
+	SubLoggerName     string
+	Spacer            string
+	TimestampFormat   string
+	ShowLogSystemName bool
+	Instance          string
+	StructuredFields  map[Key]interface{}
+	StructuredLogging bool
+	Severity          string
+	Passback          chan<- struct{}
+}
 
 // Config holds configuration settings loaded from bot config
 type Config struct {
@@ -47,10 +65,12 @@ type Config struct {
 }
 
 type advancedSettings struct {
-	ShowLogSystemName *bool   `json:"showLogSystemName"`
-	Spacer            string  `json:"spacer"`
-	TimeStampFormat   string  `json:"timeStampFormat"`
-	Headers           headers `json:"headers"`
+	ShowLogSystemName             *bool   `json:"showLogSystemName"`
+	Spacer                        string  `json:"spacer"`
+	TimeStampFormat               string  `json:"timeStampFormat"`
+	Headers                       headers `json:"headers"`
+	BypassJobChannelFilledWarning bool    `json:"bypassJobChannelFilledWarning"`
+	StructuredLogging             bool    `json:"structuredLogging"`
 }
 
 type headers struct {
@@ -76,9 +96,12 @@ type loggerFileConfig struct {
 // Logger each instance of logger settings
 type Logger struct {
 	ShowLogSystemName                                bool
-	Timestamp                                        string
+	BypassJobChannelFilledWarning                    bool
+	TimestampFormat                                  string
 	InfoHeader, ErrorHeader, DebugHeader, WarnHeader string
 	Spacer                                           string
+	Level                                            string
+	botName                                          string
 }
 
 // Levels flags for each sub logger type
@@ -88,5 +111,12 @@ type Levels struct {
 
 type multiWriterHolder struct {
 	writers []io.Writer
-	mu      sync.RWMutex
 }
+
+// ExtraFields is a map of key value pairs that can be added to a structured
+// log output.
+type ExtraFields map[Key]interface{}
+
+// Key is used for structured logging fields to ensure no collisions occur.
+// Unexported keys are default fields which cannot be overwritten.
+type Key string
