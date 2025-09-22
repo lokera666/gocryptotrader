@@ -10,7 +10,7 @@ WORKDIR /app
 COPY . .
 RUN $(npm bin)/ng build --prod --build-optimizer
 
-FROM nginx:1.19.2-alpine
+FROM nginx:1.23.2-alpine
 RUN rm -rf /var/www/html/*
 COPY nginx/default.conf /etc/nginx/conf.d/
 COPY --from=build /app/dist /var/www/html
